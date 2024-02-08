@@ -1,5 +1,8 @@
 # D3
-LAMMPS implementation of dft-d3 (by Stefan Grimme, Jens Antony, Stephan Ehrlich, and Helge Krieg, J. Chem. Phys. 132, 154104 (2010); DOI:10.1063/1.3382344)
+LAMMPS implementation of dft-d3 
+
+(by Stefan Grimme, Jens Antony, Stephan Ehrlich, and Helge Krieg, J. Chem. Phys. 132, 154104 (2010); DOI:10.1063/1.3382344)
+
 You can find the original version of D3 at https://www.chemie.uni-bonn.de/grimme/de/software/dft-d3.
 
 # How to use
@@ -20,7 +23,9 @@ pair_style      d3    ${cutoff_d3}  ${cutoff_d3_CN}
 pair_coeff * *  ${path_r0ab} ${path_c6ab} ${functional_type} ${elem1} ${elem2} ${elem3}
 ```
 Here, `cutoff_d3` and `cutoff_d3_CN` are square of cutoff radii for energy/force and coordination number, respectively.
+
 Units are Bohr radius: 1 (Bohr radius) = 0.52917721 (Å)
+
 (Default values are 9000 and 1600, respectively)
 
 # Features
