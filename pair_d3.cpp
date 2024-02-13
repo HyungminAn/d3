@@ -79,7 +79,6 @@ PairD3::~PairD3() {
         memory->destroy(dc6i);
         memory->destroy(f);
 
-        memory->destroy(drij);
         memory->destroy(sigma);
 
         memory->destroy(tau_vdw);
@@ -166,17 +165,6 @@ void PairD3::allocate() {
     int dim_drij_2 = 2 * rep_vdw[0] + 1;
     int dim_drij_3 = 2 * rep_vdw[1] + 1;
     int dim_drij_4 = 2 * rep_vdw[2] + 1;
-    memory->create(drij, dim_drij_1, dim_drij_2, dim_drij_3, dim_drij_4, "pair:drij");
-    for (int dim1 = 0; dim1 < dim_drij_1; dim1++) {
-        for (int dim2 = 0; dim2 < dim_drij_2; dim2++) {
-            for (int dim3 = 0; dim3 < dim_drij_3; dim3++) {
-                for (int dim4 = 0; dim4 < dim_drij_4; dim4++) {
-                    drij[dim1][dim2][dim3][dim4] = 0.0;
-                }
-            }
-        }
-    }
-
 
     memory->create(tau_vdw, dim_drij_2, dim_drij_3, dim_drij_4, 3, "pair:tau_vdw");
     memory->create(tau_cn, 2*rep_cn[0]+1, 2*rep_cn[1]+1, 2*rep_cn[2]+1, 3, "pair:tau_cn");
@@ -617,9 +605,9 @@ void PairD3::get_dC6_dCNij() {
         double cni, cnj;
         int idx_linij;
 
-        #pragma omp for collapse(2) schedule(auto)
-        for (int iat = 0; iat < n; iat++) {
-            for (int jat = 0; jat <= iat; jat++) {
+        #pragma omp for schedule(auto)
+        for (int iat = n - 1; iat >= 0; iat--) {
+            for (int jat = iat; jat >= 0; jat--) {
                 izi = iz[iat];
                 cni = cn[iat];
                 mxci = mxc[izi];
@@ -636,7 +624,7 @@ void PairD3::get_dC6_dCNij() {
                 d_denominator_i = 0.0;
                 d_numerator_j = 0.0;
                 d_denominator_j = 0.0;
-                idx_linij = lin(iat + 1, jat + 1) - 1;
+                idx_linij = jat + (iat + 1) * iat / 2;
 
                 for (int a = 0; a < mxci; a++) {
                     for (int b = 0; b < mxcj; b++) {
@@ -785,50 +773,50 @@ void PairD3::gather_cn() {
 
         double r, r2;        // rAB in the paper
         double damp;     // fractional coordinate number
-        bool cond1, cond2;
+        int idx1, idx2, idx3;
 
         #pragma omp for schedule(auto)
-        for (int iat = 0; iat < n; iat++) {
-            for (int jat = 0; jat < iat; jat++) {
-                for (int k = 0; k < tau_idx_cn_total_size; k += 3) {
-                    // skip for the same atoms
-                    r2 = get_distance_with_tau(tau_cn[tau_idx_cn[k]][tau_idx_cn[k+1]][tau_idx_cn[k+2]], jat, iat);
-                    cond2 = (r2 > cn_thr);
-                    if (cond2) { continue; }
+        for (int iat = n - 1; iat >= 0; iat--) {
+            for (int jat = iat - 1; jat >= 0; jat--) {
+                for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
+                    idx1 = tau_idx_cn[k-2];
+                    idx2 = tau_idx_cn[k-1];
+                    idx3 = tau_idx_cn[k];
+                    r2 = get_distance_with_tau(tau_cn[idx1][idx2][idx3], jat, iat);
+                    if (r2 > cn_thr) { continue; }
                     r = sqrt(r2);
 
-                    // counting function exponential has a better long - range behavior than MHGs inverse damping
                     damp = 1.0 / (1.0 + exp(-k1 * (((rcov[iz[iat]] + rcov[iz[jat]]) / r) - 1.0)));
                     cn_private[ithread * n + iat] += damp;
                 } // k
             } // jat
 
-            for (int jat = iat + 1; jat < n; jat++) {
-                for (int k = 0; k < tau_idx_cn_total_size; k += 3) {
-                    // skip for the same atoms
-                    r2 = get_distance_with_tau(tau_cn[tau_idx_cn[k]][tau_idx_cn[k+1]][tau_idx_cn[k+2]], jat, iat);
-                    cond2 = (r2 > cn_thr);
-                    if (cond2) { continue; }
+            for (int jat = n - 1; jat > iat; jat--) {
+                for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
+                    idx1 = tau_idx_cn[k-2];
+                    idx2 = tau_idx_cn[k-1];
+                    idx3 = tau_idx_cn[k];
+                    r2 = get_distance_with_tau(tau_cn[idx1][idx2][idx3], jat, iat);
+                    if (r2 > cn_thr) { continue; }
                     r = sqrt(r2);
 
-                    // counting function exponential has a better long - range behavior than MHGs inverse damping
                     damp = 1.0 / (1.0 + exp(-k1 * (((rcov[iz[iat]] + rcov[iz[jat]]) / r) - 1.0)));
                     cn_private[ithread * n + iat] += damp;
                 } // k
             } // jat
 
-            for (int k = 0; k < tau_idx_cn_total_size; k += 3) {
+            for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
                 // skip for the same atoms
-                cond1 = (  tau_idx_cn[k]   == rep_cn[0]
-                        && tau_idx_cn[k+1] == rep_cn[1]
-                        && tau_idx_cn[k+2] == rep_cn[2]);
-                if (cond1) { continue; }
-                r2 = get_distance_with_tau(tau_cn[tau_idx_cn[k]][tau_idx_cn[k+1]][tau_idx_cn[k+2]], iat, iat);
-                cond2 = (r2 > cn_thr);
-                if (cond2) { continue; }
+                idx1 = tau_idx_cn[k-2];
+                idx2 = tau_idx_cn[k-1];
+                idx3 = tau_idx_cn[k];
+                if (   idx1 == rep_cn[0]
+                    && idx2 == rep_cn[1]
+                    && idx3 == rep_cn[2]) {continue; }
+                r2 = get_distance_with_tau(tau_cn[idx1][idx2][idx3], iat, iat);
+                if (r2 > cn_thr) { continue; }
                 r = sqrt(r2);
 
-                // counting function exponential has a better long - range behavior than MHGs inverse damping
                 damp = 1.0 / (1.0 + exp(-k1 * (((rcov[iz[iat]] + rcov[iz[iat]]) / r) - 1.0)));
                 cn_private[ithread * n + iat] += damp;
             } // k
@@ -845,16 +833,6 @@ void PairD3::gather_cn() {
 
 }
 
-
-/* ----------------------------------------------------------------------
-   Lin function (Used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-int PairD3::lin(int i1, int i2) {
-    int idum1 = std::max(i1, i2);
-    int idum2 = std::min(i1, i2);
-    return idum2 + idum1 * (idum1 - 1) / 2;
-}
 
 /* ----------------------------------------------------------------------
    inverse cell (used in PairD3::compute)
@@ -878,16 +856,6 @@ void PairD3::inv_cell(double** x, double** a) {
 }
 
 /* ----------------------------------------------------------------------
-   get cell volume (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-double PairD3::get_cell_volume(double** x) {
-    double det = x[0][0] * x[1][1] * x[2][2] + x[0][1] * x[1][2] * x[2][0] + x[0][2] * x[1][0] * x[2][1] \
-        - x[0][2] * x[1][1] * x[2][0] - x[0][1] * x[1][0] * x[2][2] - x[0][0] * x[1][2] * x[2][1];
-    return det;
-}
-
-/* ----------------------------------------------------------------------
    reallcate memory if the number of atoms has changed (used in PairD3::compute)
 ------------------------------------------------------------------------- */
 
@@ -900,7 +868,6 @@ void PairD3::reallocate_arrays() {
     memory->destroy(iz);
     memory->destroy(dc6i);
     memory->destroy(f);
-    memory->destroy(drij);
     memory->destroy(tau_idx_vdw);
     memory->destroy(tau_idx_cn);
 
@@ -930,21 +897,6 @@ void PairD3::reallocate_arrays() {
     set_criteria(rthr, rep_vdw);
     set_criteria(cn_thr, rep_cn);
 
-    int dim_drij_1 = natoms * (natoms + 1) / 2;
-    int dim_drij_2 = 2 * rep_vdw[0] + 1;
-    int dim_drij_3 = 2 * rep_vdw[1] + 1;
-    int dim_drij_4 = 2 * rep_vdw[2] + 1;
-    memory->create(drij, dim_drij_1, dim_drij_2, dim_drij_3, dim_drij_4, "pair:drij");
-    for (int dim1 = 0; dim1 < dim_drij_1; dim1++) {
-        for (int dim2 = 0; dim2 < dim_drij_2; dim2++) {
-            for (int dim3 = 0; dim3 < dim_drij_3; dim3++) {
-                for (int dim4 = 0; dim4 < dim_drij_4; dim4++) {
-                    drij[dim1][dim2][dim3][dim4] = 0.0;
-                }
-            }
-        }
-    }
-
     int size_taux_vdw = 2 * rep_vdw[0] + 1;
     int size_tauy_vdw = 2 * rep_vdw[1] + 1;
     int size_tauz_vdw = 2 * rep_vdw[2] + 1;
@@ -957,6 +909,7 @@ void PairD3::reallocate_arrays() {
     tau_idx_cn_total_size = size_taux_cn * size_tauy_cn * size_tauz_cn * 3;
     memory->create(tau_idx_cn, tau_idx_cn_total_size, "pair:tau_idx_cn");
 
+    int dim_drij_1 = natoms * (natoms + 1) / 2;
     memory->create(dc6_iji_tot, dim_drij_1, "pair_dc6_iji_tot");
     memory->create(dc6_ijj_tot, dim_drij_1, "pair_dc6_ijj_tot");
     memory->create(c6_ij_tot, dim_drij_1, "pair_c6_ij_tot");
@@ -1051,6 +1004,7 @@ void PairD3::precalculate_tau_array() {
     }
 }
 
+
 /* ----------------------------------------------------------------------
    Get force coefficients
 ------------------------------------------------------------------------- */
@@ -1084,52 +1038,83 @@ void PairD3::calculate_force_coefficients() {
         double damp6 = 0.0, damp8 = 0.0;    // dummy variable for calculation
         double s8 = s18;                    // D3 parameter for 8th-power term (just use s8 from beginning?)
         double dc6_rest = 0.0;
-        double result;
+        double x1;
         double disp_sum = 0.0;
         double tmp_v = 0.0;
+        int idx1, idx2, idx3;
+        double rij[3];
+        double vec[3];
+        double sigma_local[3][3] = {{ 0.0 }};
+        const double r2_rthr = rthr;
 
         #pragma omp for schedule(auto)
         for (int iat = n - 1; iat >= 0; iat--) {
             for (int jat = iat - 1; jat >= 0; jat--) {
-                for (int k = 0; k < tau_idx_vdw_total_size; k += 3) {
+                r0 = r0ab[iz[iat]][iz[jat]];
+                r42 = r2r4[iz[iat]] * r2r4[iz[jat]];
+                idx_linij = jat + (iat + 1) * iat / 2;
+                for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
                     // cutoff radius check
-                    r2 = (x[jat][0] - x[iat][0] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][0]) *
-                         (x[jat][0] - x[iat][0] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][0])
-                       + (x[jat][1] - x[iat][1] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][1]) *
-                         (x[jat][1] - x[iat][1] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][1])
-                       + (x[jat][2] - x[iat][2] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][2]) *
-                         (x[jat][2] - x[iat][2] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][2]);
-                    if (r2 > rthr || r2 < 0.1) { continue; }
+                    idx1 = tau_idx_vdw[k-2];
+                    idx2 = tau_idx_vdw[k-1];
+                    idx3 = tau_idx_vdw[k];
+                    rij[0] = x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0];
+                    rij[1] = x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1];
+                    rij[2] = x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2];
+                    r2 = MathExtra::lensq3(rij);
+                    if (r2 > r2_rthr) { continue; }
 
                     r = sqrt(r2);
-                    r0 = r0ab[iz[iat]][iz[jat]];
 
                     // Calculates damping functions
+                    // alp6 = 14.0, alp8 = 16.0
                     tmp_v = (rs6 * r0) / r;
-                    tmp_v *= tmp_v * tmp_v * tmp_v * tmp_v * tmp_v * tmp_v; // ^7
-                    t6 = tmp_v * tmp_v; // ^14
+                    t6 = tmp_v;
+                    t6 *= t6;       // ^2
+                    t6 *= tmp_v;    // ^3
+                    t6 *= t6;       // ^6
+                    t6 *= tmp_v;    // ^7
+                    t6 *= t6;       // ^14
                     damp6 = 1.0 / (1.0 + 6.0 * t6);
-                    tmp_v = (rs8 * r0) / r;
-                    tmp_v = tmp_v * tmp_v; // ^2
-                    tmp_v = tmp_v * tmp_v; // ^4
-                    tmp_v = tmp_v * tmp_v; // ^8
-                    t8 = tmp_v * tmp_v; // ^16
+                    t6 *= damp6;    // pre-calculation
+                    t8 = (rs8 * r0) / r;
+                    t8 *= t8;       // ^2
+                    t8 *= t8;       // ^4
+                    t8 *= t8;       // ^8
+                    t8 *= t8;       // ^16
                     damp8 = 1.0 / (1.0 + 6.0 * t8);
+                    t8 *= damp8;    // pre-calculation
 
-                    idx_linij = jat + (iat + 1) * iat / 2;
                     c6 = c6_ij_tot[idx_linij];
-                    r42 = r2r4[iz[iat]] * r2r4[iz[jat]];
                     r6 = r2 * r2 * r2;
                     r7 = r6 * r;
 
                     /* // d(r ^ (-6)) / d(r_ij) */
-                    result = 6.0 * c6 / r7 * (s6 * damp6 * (alp6 * t6 * damp6 - 1.0) + s8 * r42 / r2 * damp8 * (3.0 * alp8 * t8 * damp8 - 4.0));
+                    x1 = 6.0 * c6 / r7 * (s6 * damp6 * (14.0 * t6 - 1.0) + s8 * r42 / r2 * damp8 * (48.0 * t8 - 4.0));
 
-                    drij[idx_linij][tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]] = result;
+                    vec[0] = x1 * rij[0] / r;
+                    vec[1] = x1 * rij[1] / r;
+                    vec[2] = x1 * rij[2] / r;
+
+                    f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
+                    f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
+                    f_private[ithread * n * 3 + iat * 3 + 2] -= vec[2];
+                    f_private[ithread * n * 3 + jat * 3    ] += vec[0];
+                    f_private[ithread * n * 3 + jat * 3 + 1] += vec[1];
+                    f_private[ithread * n * 3 + jat * 3 + 2] += vec[2];
+
+                    sigma_local[0][0] += vec[0] * rij[0];
+                    sigma_local[0][1] += vec[0] * rij[1];
+                    sigma_local[0][2] += vec[0] * rij[2];
+                    sigma_local[1][0] += vec[1] * rij[0];
+                    sigma_local[1][1] += vec[1] * rij[1];
+                    sigma_local[1][2] += vec[1] * rij[2];
+                    sigma_local[2][0] += vec[2] * rij[0];
+                    sigma_local[2][1] += vec[2] * rij[1];
+                    sigma_local[2][2] += vec[2] * rij[2];
 
                     // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
                     dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 / r2) / r6;
-
                     disp_sum -= dc6_rest * c6;
                     dc6iji = dc6_iji_tot[idx_linij];
                     dc6ijj = dc6_ijj_tot[idx_linij];
@@ -1138,15 +1123,18 @@ void PairD3::calculate_force_coefficients() {
                 } // k
             } // iat != jat
 
-            for (int k = 0; k < tau_idx_vdw_total_size; k += 3) {
+            for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
                 // cutoff radius check
-                r2 = (tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][0]) *
-                     (tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][0])
-                   + (tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][1]) *
-                     (tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][1])
-                   + (tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][2]) *
-                     (tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][2]);
-                if (r2 > rthr || r2 < 0.1) { continue; }
+                idx1 = tau_idx_vdw[k-2];
+                idx2 = tau_idx_vdw[k-1];
+                idx3 = tau_idx_vdw[k];
+                if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
+                rij[0] = tau_vdw[idx1][idx2][idx3][0];
+                rij[1] = tau_vdw[idx1][idx2][idx3][1];
+                rij[2] = tau_vdw[idx1][idx2][idx3][2];
+                r2 = MathExtra::lensq3(rij);
+                // cutoff radius check
+                if (r2 > rthr) { continue; }
 
                 r = sqrt(r2);
                 r0 = r0ab[iz[iat]][iz[iat]];
@@ -1170,9 +1158,21 @@ void PairD3::calculate_force_coefficients() {
                 r7 = r6 * r;
 
                 /* // d(r ^ (-6)) / d(r_ij) */
-                result = 6.0 * c6 / r7 * (s6 * damp6 * (alp6 * t6 * damp6 - 1.0) + s8 * r42 / r2 * damp8 * (3.0 * alp8 * t8 * damp8 - 4.0));
+                x1 = 0.5 * 6.0 * c6 / r7 * (s6 * damp6 * (alp6 * t6 * damp6 - 1.0) + s8 * r42 / r2 * damp8 * (3.0 * alp8 * t8 * damp8 - 4.0));
 
-                drij[idx_linij][tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]] = result * 0.5;
+                vec[0] = x1 * rij[0] / r;
+                vec[1] = x1 * rij[1] / r;
+                vec[2] = x1 * rij[2] / r;
+
+                sigma_local[0][0] += vec[0] * rij[0];
+                sigma_local[0][1] += vec[0] * rij[1];
+                sigma_local[0][2] += vec[0] * rij[2];
+                sigma_local[1][0] += vec[1] * rij[0];
+                sigma_local[1][1] += vec[1] * rij[1];
+                sigma_local[1][2] += vec[1] * rij[2];
+                sigma_local[2][0] += vec[2] * rij[0];
+                sigma_local[2][1] += vec[2] * rij[1];
+                sigma_local[2][2] += vec[2] * rij[2];
 
                 // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
                 dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 / r2) / r6 * 0.5;
@@ -1186,6 +1186,12 @@ void PairD3::calculate_force_coefficients() {
         } // iat
 
         disp_private[ithread] = disp_sum;  // calculate E_disp for sanity check
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                sigma_private[ithread * 9 + i * 3 + j] = sigma_local[i][j];
+            }
+        }
     } // pragma omp parallel
 
     for (int i = 0; i < nthreads; i++) {
@@ -1198,6 +1204,7 @@ void PairD3::calculate_force_coefficients() {
 
     disp_total = disp;
 }
+
 
 /* ----------------------------------------------------------------------
    Get forces
@@ -1220,90 +1227,95 @@ void PairD3::get_forces() {
     {
         const int ithread = omp_get_thread_num();
 
-        int idx_linij;
-
         double rcovij;                  // sum of covalent radius
         double expterm, dcnn;
         double x1;
         double vec[3] = { 0.0 };
-        double rij[3] = { 0.0 };            // Displacement vector (to calculate r)
+        double rij[4] = { 0.0 };            // Displacement vector (to calculate r)
         double r = 0.0, r2 = 0.0;           // Atomic distance and square of it
         double sigma_local[3][3] = {{ 0.0 }};
+        int idx1, idx2, idx3;
 
         #pragma omp for schedule(auto)
         for (int iat = n - 1; iat >= 0; iat--) {
             for (int jat = iat - 1; jat >= 0; jat--) {
-                for (int k = 0; k < tau_idx_vdw_total_size; k += 3) {
-                    rij[0] = x[jat][0] - x[iat][0] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][0];
-                    rij[1] = x[jat][1] - x[iat][1] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][1];
-                    rij[2] = x[jat][2] - x[iat][2] + tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][2];
-
+                for (int k = tau_idx_cn_total_size - 1; k >= 0 ; k -= 3) {
+                    idx1 = tau_idx_cn[k-2];
+                    idx2 = tau_idx_cn[k-1];
+                    idx3 = tau_idx_cn[k];
+                    rij[0] = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
+                    rij[1] = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
+                    rij[2] = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
                     r2 = MathExtra::lensq3(rij);
-                    if (r2 > rthr || r2 < 0.5) { continue; }
-
+                    // Assume rthr > cn_thr --> only check for cn_thr
+                    if (r2 >= cn_thr) { continue; }
                     r = sqrt(r2);
                     rcovij = rcov[iz[iat]] + rcov[iz[jat]];
-                    if (r2 < cn_thr) {
-                        expterm = exp(-k1 * (rcovij / r - 1.0));
-                        dcnn = -k1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                    } else {
-                        dcnn = 0.0;
-                    }
+                    expterm = exp(-k1 * (rcovij / r - 1.0));
+                    dcnn = -k1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
+                    x1 = dcnn * (dc6i[iat] + dc6i[jat]);
 
-                    idx_linij = jat + (iat + 1) * iat / 2;
-                    x1 = drij[idx_linij][tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]] + dcnn * (dc6i[iat] + dc6i[jat]);
+                    vec[0] = x1 * rij[0] / r;
+                    vec[1] = x1 * rij[1] / r;
+                    vec[2] = x1 * rij[2] / r;
 
-                    for (int j = 0; j < 3; j++) {
-                        vec[j] = x1 * rij[j] / r;
-                        f_private[ithread * n * 3 + iat * 3 + j] -= vec[j];
-                        f_private[ithread * n * 3 + jat * 3 + j] += vec[j];
-                    }
+                    f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
+                    f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
+                    f_private[ithread * n * 3 + iat * 3 + 2] -= vec[2];
+                    f_private[ithread * n * 3 + jat * 3    ] += vec[0];
+                    f_private[ithread * n * 3 + jat * 3 + 1] += vec[1];
+                    f_private[ithread * n * 3 + jat * 3 + 2] += vec[2];
 
-                    for (int i = 0; i < 3; i++) {
-                        for (int j = 0; j < 3; j++) {
-                            sigma_local[i][j] += vec[i] * rij[j];
-                        }
-                    }
+                    sigma_local[0][0] += vec[0] * rij[0];
+                    sigma_local[0][1] += vec[0] * rij[1];
+                    sigma_local[0][2] += vec[0] * rij[2];
+                    sigma_local[1][0] += vec[1] * rij[0];
+                    sigma_local[1][1] += vec[1] * rij[1];
+                    sigma_local[1][2] += vec[1] * rij[2];
+                    sigma_local[2][0] += vec[2] * rij[0];
+                    sigma_local[2][1] += vec[2] * rij[1];
+                    sigma_local[2][2] += vec[2] * rij[2];
+
                 } // k
             } // iat != jat
 
-            for (int k = 0; k < tau_idx_vdw_total_size; k += 3) {
-                if (tau_idx_vdw[k] == rep_vdw[0] && tau_idx_vdw[k+1] == rep_vdw[1] && tau_idx_vdw[k+2] == rep_vdw[2]) { continue; }
+            for (int k = tau_idx_cn_total_size - 1; k >= 0 ; k -= 3) {
+                idx1 = tau_idx_cn[k-2];
+                idx2 = tau_idx_cn[k-1];
+                idx3 = tau_idx_cn[k];
+                if (idx1 == rep_cn[0] && idx2 == rep_cn[1] && idx3 == rep_cn[2]) { continue; }
 
-                rij[0] = tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][0];
-                rij[1] = tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][1];
-                rij[2] = tau_vdw[tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]][2];
-
+                rij[0] = tau_cn[idx1][idx2][idx3][0];
+                rij[1] = tau_cn[idx1][idx2][idx3][1];
+                rij[2] = tau_cn[idx1][idx2][idx3][2];
                 r2 = MathExtra::lensq3(rij);
-                if (r2 > rthr || r2 < 0.5) { continue; }
-
+                // Assume rthr > cn_thr --> only check for cn_thr
+                if (r2 >= cn_thr) { continue; }
                 r = sqrt(r2);
                 rcovij = rcov[iz[iat]] + rcov[iz[iat]];
-                if (r2 < cn_thr) {
-                    expterm = exp(-k1 * (rcovij / r - 1.0));
-                    dcnn = -k1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                } else {
-                    dcnn = 0.0;
-                }
+                expterm = exp(-k1 * (rcovij / r - 1.0));
+                dcnn = -k1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
+                x1 = dcnn * dc6i[iat];
 
-                idx_linij = iat + (iat + 1) * iat / 2;
-                x1 = drij[idx_linij][tau_idx_vdw[k]][tau_idx_vdw[k+1]][tau_idx_vdw[k+2]] + dcnn * dc6i[iat];
+                vec[0] = x1 * rij[0] / r;
+                vec[1] = x1 * rij[1] / r;
+                vec[2] = x1 * rij[2] / r;
 
-                for (int j = 0; j < 3; j++) {
-                    vec[j] = x1 * rij[j] / r;
-                }
-
-                for (int i = 0; i < 3; i++) {
-                    for (int j = 0; j < 3; j++) {
-                        sigma_local[i][j] += vec[i] * rij[j];
-                    }
-                }
+                sigma_local[0][0] += vec[0] * rij[0];
+                sigma_local[0][1] += vec[0] * rij[1];
+                sigma_local[0][2] += vec[0] * rij[2];
+                sigma_local[1][0] += vec[1] * rij[0];
+                sigma_local[1][1] += vec[1] * rij[1];
+                sigma_local[1][2] += vec[1] * rij[2];
+                sigma_local[2][0] += vec[2] * rij[0];
+                sigma_local[2][1] += vec[2] * rij[1];
+                sigma_local[2][2] += vec[2] * rij[2];
             } // k
         } // iat == jat
 
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
-                sigma_private[ithread * 9 + i * 3 + j] = sigma_local[i][j];
+                sigma_private[ithread * 9 + i * 3 + j] += sigma_local[i][j];
             }
         }
     } // omp parallel
@@ -1426,7 +1438,6 @@ double PairD3::init_one(int i, int j) {
 
 void PairD3::init_style() {
     if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::init_style <<<\n");
-
     neighbor->add_request(this, NeighConst::REQ_FULL);
 }
 
