@@ -190,10 +190,9 @@ int PairD3::find_atomic_number(std::string& key) {
         "fr","ra","ac","th","pa","u ","np","pu"
     };
 
-    int atomic_number;
     for (size_t i = 0; i < element_table.size(); ++i) {
         if (element_table[i] == key) {
-            atomic_number = i + 1;
+            int atomic_number = i + 1;
             return atomic_number;
         }
     }
@@ -219,8 +218,6 @@ int PairD3::is_int_in_array(int arr[], int size, int value) {
 
 void PairD3::read_r0ab(LAMMPS* lmp, char* path_r0ab, int* atomic_numbers, int ntypes) {
 
-    int idx_atom_1 = -1, idx_atom_2 = -1;
-    double value = 0;
     int nparams_per_line = 94;
     int row_idx = 1;
     char* line;
@@ -228,15 +225,15 @@ void PairD3::read_r0ab(LAMMPS* lmp, char* path_r0ab, int* atomic_numbers, int nt
     PotentialFileReader r0ab_reader(lmp, path_r0ab, "d3");
 
     while ((line = r0ab_reader.next_line(nparams_per_line))) {
-        idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, row_idx);
+        const int idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, row_idx);
         // Skip for the other rows
         if (idx_atom_1 < 0) { row_idx++; continue; }
         try {
             ValueTokenizer r0ab_values(line);
 
             for (int col_idx=1; col_idx <= nparams_per_line; col_idx++) {
-                value = r0ab_values.next_double();
-                idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, col_idx);
+                const double value = r0ab_values.next_double();
+                const int idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, col_idx);
                 if (idx_atom_2 < 0) { continue; }
                 r0ab[idx_atom_1+1][idx_atom_2+1] = value / AU_TO_ANG;
             } // loop over column
@@ -276,9 +273,7 @@ void PairD3::read_c6ab(LAMMPS* lmp, char* path_c6ab, int* atomic_numbers, int nt
 
     for (int i = 1; i <= ntypes; i++) { mxc[i] = 0; }
 
-    int atom_number_1 = 0, atom_number_2 = 0, grid_i = 0, grid_j = 0;
-    int idx_atom_1 = -1, idx_atom_2 = -1;
-    double ref_c6 = 0, ref_cn1 = 0, ref_cn2 = 0;
+    int grid_i = 0, grid_j = 0;
     char* line;
     int nparams_per_line = 5;
 
@@ -287,16 +282,16 @@ void PairD3::read_c6ab(LAMMPS* lmp, char* path_c6ab, int* atomic_numbers, int nt
     while ((line = c6ab_reader.next_line(nparams_per_line))) {
         try {
             ValueTokenizer c6ab_values(line);
-            ref_c6 = c6ab_values.next_double();
-            atom_number_1 = static_cast<int>(c6ab_values.next_double());
-            atom_number_2 = static_cast<int>(c6ab_values.next_double());
+            const double ref_c6 = c6ab_values.next_double();
+            int atom_number_1 = static_cast<int>(c6ab_values.next_double());
+            int atom_number_2 = static_cast<int>(c6ab_values.next_double());
             get_limit_in_pars_array(atom_number_1, atom_number_2, grid_i, grid_j);
-            idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, atom_number_1);
+            const int idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, atom_number_1);
             if ( idx_atom_1 < 0 ) { continue; }
-            idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, atom_number_2);
+            const int idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, atom_number_2);
             if ( idx_atom_2 < 0 ) { continue; }
-            ref_cn1 = c6ab_values.next_double();
-            ref_cn2 = c6ab_values.next_double();
+            const double ref_cn1 = c6ab_values.next_double();
+            const double ref_cn2 = c6ab_values.next_double();
 
             mxc[idx_atom_1 + 1] = std::max(mxc[idx_atom_1 + 1], grid_i);
             mxc[idx_atom_2 + 1] = std::max(mxc[idx_atom_2 + 1], grid_j);
@@ -567,61 +562,49 @@ void PairD3::get_dC6_dCNij() {
 
     #pragma omp parallel
     {
-        double c6mem;
-        double r, r_save;
-        double c6ref;
-        double cn_refi, cn_refj;
-        double expterm, term;
-        double numerator, denominator;
-        double d_numerator_i, d_denominator_i, d_numerator_j, d_denominator_j;
-
-        int    mxci, mxcj;      // max number of reference point for iat_type, jat_type
-        double cni, cnj;        // Coordination number (CN) of iat, jat
-        int    idx_linij;       // index for (iat, jat) pair
-
         #pragma omp for schedule(auto)
         for (int iat = n - 1; iat >= 0; iat--) {
             for (int jat = iat; jat >= 0; jat--) {
-                cni  = cn[iat];
-                mxci = mxc[(atom->type)[iat]];
+                const double cni  = cn[iat];
+                const int mxci = mxc[(atom->type)[iat]];
 
-                cnj  = cn[jat];
-                mxcj = mxc[(atom->type)[jat]];
+                const double cnj  = cn[jat];
+                const int mxcj = mxc[(atom->type)[jat]];
 
-                c6mem           = -1e99;
-                r_save          = 9999.0;
-                numerator       = 0.0;
-                denominator     = 0.0;
-                d_numerator_i   = 0.0;
-                d_denominator_i = 0.0;
-                d_numerator_j   = 0.0;
-                d_denominator_j = 0.0;
+                double c6mem           = -1e99;
+                double r_save          = 9999.0;
+                double numerator       = 0.0;
+                double denominator     = 0.0;
+                double d_numerator_i   = 0.0;
+                double d_denominator_i = 0.0;
+                double d_numerator_j   = 0.0;
+                double d_denominator_j = 0.0;
 
-                idx_linij = jat + (iat + 1) * iat / 2;
+                const int idx_linij = jat + (iat + 1) * iat / 2;
 
                 for (int a = 0; a < mxci; a++) {
                     for (int b = 0; b < mxcj; b++) {
-                        c6ref = c6ab[(atom->type)[iat]][(atom->type)[jat]][a][b][0];
+                        const double c6ref = c6ab[(atom->type)[iat]][(atom->type)[jat]][a][b][0];
 
                         if (c6ref > 0) {
-                            cn_refi = c6ab[(atom->type)[iat]][(atom->type)[jat]][a][b][1];
-                            cn_refj = c6ab[(atom->type)[iat]][(atom->type)[jat]][a][b][2];
+                            const double cn_refi = c6ab[(atom->type)[iat]][(atom->type)[jat]][a][b][1];
+                            const double cn_refj = c6ab[(atom->type)[iat]][(atom->type)[jat]][a][b][2];
 
-                            r = (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
+                            const double r = (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
                             if (r < r_save) {
                                 r_save = r;
                                 c6mem = c6ref;
                             }
 
                             // Corresponds to L_ij (in D3 paper)
-                            expterm          = exp(K3 * r);
+                            double expterm   = exp(K3 * r);
                             // numerator and denominator of C6 (Z and W in D3 paper)
                             numerator       += c6ref * expterm;
                             denominator     += expterm;
 
                             expterm         *= 2.0 * K3;
 
-                            term             = expterm * (cni - cn_refi);
+                            double term      = expterm * (cni - cn_refi);
                             d_numerator_i   += c6ref * term;
                             d_denominator_i += term;
 
@@ -722,26 +705,21 @@ void PairD3::get_coordination_number() {
     {
         const int ithread = omp_get_thread_num();
 
-        double r, r2;        // rAB in the paper
-        double damp;     // fractional coordinate number
-        int idx1, idx2, idx3;
-        double rx, ry, rz;
-
         #pragma omp for schedule(auto)
         for (int iat = n - 1; iat >= 0; iat--) {
             for (int jat = iat - 1; jat >= 0; jat--) {
                 for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
-                    idx1 = tau_idx_cn[k-2];
-                    idx2 = tau_idx_cn[k-1];
-                    idx3 = tau_idx_cn[k];
+                    const int idx1 = tau_idx_cn[k-2];
+                    const int idx2 = tau_idx_cn[k-1];
+                    const int idx3 = tau_idx_cn[k];
 
-                    rx = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
-                    ry = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
-                    rz = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
-                    r2 = rx * rx + ry * ry + rz * rz;
+                    const double rx = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
+                    const double ry = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
+                    const double rz = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
+                    const double r2 = rx * rx + ry * ry + rz * rz;
                     if (r2 <= cn_thr) {
-                        r = sqrt(r2);
-                        damp = 1.0 / (1.0 + exp(-K1 * (((rcov[(atom->type)[iat]] + rcov[(atom->type)[jat]]) / r) - 1.0)));
+                        const double r = sqrt(r2);
+                        const double damp = 1.0 / (1.0 + exp(-K1 * (((rcov[(atom->type)[iat]] + rcov[(atom->type)[jat]]) / r) - 1.0)));
                         cn_private[ithread * n + iat] += damp;
                     }
                 }
@@ -749,16 +727,16 @@ void PairD3::get_coordination_number() {
 
             for (int jat = n - 1; jat > iat; jat--) {
                 for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
-                    idx1 = tau_idx_cn[k-2];
-                    idx2 = tau_idx_cn[k-1];
-                    idx3 = tau_idx_cn[k];
-                    rx = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
-                    ry = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
-                    rz = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
-                    r2 = rx * rx + ry * ry + rz * rz;
+                    const int idx1 = tau_idx_cn[k-2];
+                    const int idx2 = tau_idx_cn[k-1];
+                    const int idx3 = tau_idx_cn[k];
+                    const double rx = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
+                    const double ry = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
+                    const double rz = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
+                    const double r2 = rx * rx + ry * ry + rz * rz;
                     if (r2 <= cn_thr) {
-                        r = sqrt(r2);
-                        damp = 1.0 / (1.0 + exp(-K1 * (((rcov[(atom->type)[iat]] + rcov[(atom->type)[jat]]) / r) - 1.0)));
+                        const double r = sqrt(r2);
+                        const double damp = 1.0 / (1.0 + exp(-K1 * (((rcov[(atom->type)[iat]] + rcov[(atom->type)[jat]]) / r) - 1.0)));
                         cn_private[ithread * n + iat] += damp;
                     }
                 }
@@ -766,19 +744,19 @@ void PairD3::get_coordination_number() {
 
             for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
                 // skip for the same atoms
-                idx1 = tau_idx_cn[k-2];
-                idx2 = tau_idx_cn[k-1];
-                idx3 = tau_idx_cn[k];
+                const int idx1 = tau_idx_cn[k-2];
+                const int idx2 = tau_idx_cn[k-1];
+                const int idx3 = tau_idx_cn[k];
                 if (   idx1 != rep_cn[0]
                     || idx2 != rep_cn[1]
                     || idx3 != rep_cn[2]) {
-                    rx = tau_cn[idx1][idx2][idx3][0];
-                    ry = tau_cn[idx1][idx2][idx3][1];
-                    rz = tau_cn[idx1][idx2][idx3][2];
-                    r2 = rx * rx + ry * ry + rz * rz;
+                    const double rx = tau_cn[idx1][idx2][idx3][0];
+                    const double ry = tau_cn[idx1][idx2][idx3][1];
+                    const double rz = tau_cn[idx1][idx2][idx3][2];
+                    const double r2 = rx * rx + ry * ry + rz * rz;
                     if (r2 <= cn_thr) {
-                        r = sqrt(r2);
-                        damp = 1.0 / (1.0 + exp(-K1 * (((rcov[(atom->type)[iat]] + rcov[(atom->type)[iat]]) / r) - 1.0)));
+                        const double r = sqrt(r2);
+                        const double damp = 1.0 / (1.0 + exp(-K1 * (((rcov[(atom->type)[iat]] + rcov[(atom->type)[iat]]) / r) - 1.0)));
                         cn_private[ithread * n + iat] += damp;
                     }
                 }
@@ -974,79 +952,67 @@ void PairD3::get_forces_without_dC6() {
     {
         const int ithread = omp_get_thread_num();
 
-        double c6 = 0.0;                    // To save C6
-        double dc6iji = 0.0, dc6ijj = 0.0;  // Derivative of C6 values
-        double r0 = 0.0;                    // To save R0 : Covalent bond length
-        double r42 = 0.0;                   // To save r2r4
-        int idx_linij = 0;
-        double r = 0.0, r2 = 0.0;           // Atomic distance and square of it
-        double r_inv = 0.0, r2_inv = 0.0;   // inverse of r
-        double r6_inv = 0.0, r7_inv = 0.0; // Power of r
-        double t6 = 0.0, t8 = 0.0;          // dummy variable for calculation
-        double damp6 = 0.0, damp8 = 0.0;    // dummy variable for calculation
         double s8 = s18;                    // D3 parameter for 8th-power term (just use s8 from beginning?)
-        double dc6_rest = 0.0;
-        double x1;
-        double disp_sum = 0.0;
-        double tmp_v = 0.0;
-        int idx1, idx2, idx3;
-        double rij[3];
-        double vec[3];
         double sigma_local[3][3] = {{ 0.0 }};
+        double disp_sum;
         const double r2_rthr = rthr;
 
         #pragma omp for schedule(auto)
         for (int iat =   n - 1; iat >= 0; iat--) {
             // iat != jat
             for (int jat = iat - 1; jat >= 0; jat--) {
-                r0 = r0ab[(atom->type)[iat]][(atom->type)[jat]];
-                r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[jat]];
-                idx_linij = jat + (iat + 1) * iat / 2;
-
                 for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
                     // cutoff radius check
-                    idx1 = tau_idx_vdw[k-2];
-                    idx2 = tau_idx_vdw[k-1];
-                    idx3 = tau_idx_vdw[k];
-                    rij[0] = x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0];
-                    rij[1] = x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1];
-                    rij[2] = x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2];
-                    r2 = MathExtra::lensq3(rij);
+                    const int idx1 = tau_idx_vdw[k-2];
+                    const int idx2 = tau_idx_vdw[k-1];
+                    const int idx3 = tau_idx_vdw[k];
+                    const double rij[3] = {
+                        x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0],
+                        x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1],
+                        x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
+                    };
+                    const double r2 = MathExtra::lensq3(rij);
                     if (r2 > r2_rthr) { continue; }
 
-                    r2_inv = 1.0 / r2;
-                    r = sqrt(r2);
-                    r_inv = 1.0 / r;
+                    const double r2_inv = 1.0 / r2;
+                    const double r = sqrt(r2);
+                    const double r_inv = 1.0 / r;
 
                     // Calculates damping functions
                     // alp6 = 14.0, alp8 = 16.0
-                    tmp_v = (rs6 * r0) * r_inv;
-                    t6 = tmp_v;
+                    const double r0 = r0ab[(atom->type)[iat]][(atom->type)[jat]];
+
+                    double tmp_v = (rs6 * r0) * r_inv;
+                    double t6 = tmp_v;
                     t6 *= t6;       // ^2
                     t6 *= tmp_v;    // ^3
                     t6 *= t6;       // ^6
                     t6 *= tmp_v;    // ^7
                     t6 *= t6;       // ^14
-                    damp6 = 1.0 / (1.0 + 6.0 * t6);
+                    const double damp6 = 1.0 / (1.0 + 6.0 * t6);
                     t6 *= damp6;    // pre-calculation
-                    t8 = (rs8 * r0) * r_inv;
+                    double t8 = (rs8 * r0) * r_inv;
                     t8 *= t8;       // ^2
                     t8 *= t8;       // ^4
                     t8 *= t8;       // ^8
                     t8 *= t8;       // ^16
-                    damp8 = 1.0 / (1.0 + 6.0 * t8);
+                    const double damp8 = 1.0 / (1.0 + 6.0 * t8);
                     t8 *= damp8;    // pre-calculation
 
-                    c6 = c6_ij_tot[idx_linij];
-                    r6_inv = r2_inv * r2_inv * r2_inv;
-                    r7_inv = r6_inv * r_inv;
+                    const int idx_linij = jat + (iat + 1) * iat / 2;
+                    const double c6 = c6_ij_tot[idx_linij];
+                    const double r6_inv = r2_inv * r2_inv * r2_inv;
+                    const double r7_inv = r6_inv * r_inv;
 
+                    const double r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[jat]];
                     /* // d(r ^ (-6)) / d(r_ij) */
-                    x1 = 6.0 * c6 * r7_inv * (s6 * damp6 * (14.0 * t6 - 1.0) + s8 * r42 * r2_inv * damp8 * (48.0 * t8 - 4.0)) * r_inv;
+                    const double x1 = 6.0 * c6 * r7_inv * (s6 * damp6 * (14.0 * t6 - 1.0) + s8 * r42 * r2_inv * damp8 * (48.0 * t8 - 4.0)) * r_inv;
 
-                    vec[0] = x1 * rij[0];
-                    vec[1] = x1 * rij[1];
-                    vec[2] = x1 * rij[2];
+                    const double vec[3] = {
+                        x1 * rij[0],
+                        x1 * rij[1],
+                        x1 * rij[2]
+                    };
 
                     f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
                     f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
@@ -1066,10 +1032,10 @@ void PairD3::get_forces_without_dC6() {
                     sigma_local[2][2] += vec[2] * rij[2];
 
                     // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
-                    dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) * r6_inv;
+                    const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) * r6_inv;
                     disp_sum -= dc6_rest * c6;
-                    dc6iji = dc6_iji_tot[idx_linij];
-                    dc6ijj = dc6_ijj_tot[idx_linij];
+                    const double dc6iji = dc6_iji_tot[idx_linij];
+                    const double dc6ijj = dc6_ijj_tot[idx_linij];
                     dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
                     dc6i_private[n * ithread + jat] += dc6_rest * dc6ijj;
                 } // k
@@ -1078,46 +1044,50 @@ void PairD3::get_forces_without_dC6() {
             // iat == jat
             for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
                 // cutoff radius check
-                idx1 = tau_idx_vdw[k-2];
-                idx2 = tau_idx_vdw[k-1];
-                idx3 = tau_idx_vdw[k];
+                const int idx1 = tau_idx_vdw[k-2];
+                const int idx2 = tau_idx_vdw[k-1];
+                const int idx3 = tau_idx_vdw[k];
                 if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
-                rij[0] = tau_vdw[idx1][idx2][idx3][0];
-                rij[1] = tau_vdw[idx1][idx2][idx3][1];
-                rij[2] = tau_vdw[idx1][idx2][idx3][2];
-                r2 = MathExtra::lensq3(rij);
+                const double rij[3] = {
+                    tau_vdw[idx1][idx2][idx3][0],
+                    tau_vdw[idx1][idx2][idx3][1],
+                    tau_vdw[idx1][idx2][idx3][2]
+                };
+                const double r2 = MathExtra::lensq3(rij);
                 // cutoff radius check
                 if (r2 > rthr) { continue; }
 
-                r2_inv = 1.0 / r2;
-                r = sqrt(r2);
-                r_inv = 1.0 / r;
-                r0 = r0ab[(atom->type)[iat]][(atom->type)[iat]];
+                const double r2_inv = 1.0 / r2;
+                const double r = sqrt(r2);
+                const double r_inv = 1.0 / r;
+                const double r0 = r0ab[(atom->type)[iat]][(atom->type)[iat]];
 
                 // Calculates damping functions
-                tmp_v = (rs6 * r0) * r_inv;
+                double tmp_v = (rs6 * r0) * r_inv;
                 tmp_v *= tmp_v * tmp_v * tmp_v * tmp_v * tmp_v * tmp_v; // ^7
-                t6 = tmp_v * tmp_v; // ^14
-                damp6 = 1.0 / (1.0 + 6.0 * t6);
+                double t6 = tmp_v * tmp_v; // ^14
+                const double damp6 = 1.0 / (1.0 + 6.0 * t6);
                 tmp_v = (rs8 * r0) * r_inv;
                 tmp_v = tmp_v * tmp_v; // ^2
                 tmp_v = tmp_v * tmp_v; // ^4
                 tmp_v = tmp_v * tmp_v; // ^8
-                t8 = tmp_v * tmp_v; // ^16
-                damp8 = 1.0 / (1.0 + 6.0 * t8);
+                double t8 = tmp_v * tmp_v; // ^16
+                const double damp8 = 1.0 / (1.0 + 6.0 * t8);
 
-                idx_linij = iat + (iat + 1) * iat / 2;
-                c6 = c6_ij_tot[idx_linij];
-                r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[iat]];
-                r6_inv = r2_inv * r2_inv * r2_inv;
-                r7_inv = r6_inv * r_inv;
+                int idx_linij = iat + (iat + 1) * iat / 2;
+                const double c6 = c6_ij_tot[idx_linij];
+                const double r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[iat]];
+                const double r6_inv = r2_inv * r2_inv * r2_inv;
+                const double r7_inv = r6_inv * r_inv;
 
                 /* // d(r ^ (-6)) / d(r_ij) */
-                x1 = 0.5 * 6.0 * c6 * r7_inv * (s6 * damp6 * (alp6 * t6 * damp6 - 1.0) + s8 * r42 * r2_inv * damp8 * (3.0 * alp8 * t8 * damp8 - 4.0)) * r_inv;
+                const double x1 = 0.5 * 6.0 * c6 * r7_inv * (s6 * damp6 * (alp6 * t6 * damp6 - 1.0) + s8 * r42 * r2_inv * damp8 * (3.0 * alp8 * t8 * damp8 - 4.0)) * r_inv;
 
-                vec[0] = x1 * rij[0];
-                vec[1] = x1 * rij[1];
-                vec[2] = x1 * rij[2];
+                const double vec[3] = {
+                    x1 * rij[0],
+                    x1 * rij[1],
+                    x1 * rij[2]
+                };
 
                 sigma_local[0][0] += vec[0] * rij[0];
                 sigma_local[0][1] += vec[0] * rij[1];
@@ -1130,11 +1100,11 @@ void PairD3::get_forces_without_dC6() {
                 sigma_local[2][2] += vec[2] * rij[2];
 
                 // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
-                dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) * r6_inv * 0.5;
+                const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) * r6_inv * 0.5;
 
                 disp_sum -= dc6_rest * c6;
-                dc6iji = dc6_iji_tot[idx_linij];
-                dc6ijj = dc6_ijj_tot[idx_linij];
+                const double dc6iji = dc6_iji_tot[idx_linij];
+                const double dc6ijj = dc6_ijj_tot[idx_linij];
                 dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
                 dc6i_private[n * ithread + iat] += dc6_rest * dc6ijj;
             } // iat == jat
@@ -1182,39 +1152,35 @@ void PairD3::get_forces_with_dC6() {
     #pragma omp parallel
     {
         const int ithread = omp_get_thread_num();
-
-        double rcovij;                  // sum of covalent radius
-        double expterm, dcnn;
-        double x1;
-        double vec[3] = { 0.0 };
-        double rij[4] = { 0.0 };            // Displacement vector (to calculate r)
-        double r = 0.0, r2 = 0.0;           // Atomic distance and square of it
         double sigma_local[3][3] = {{ 0.0 }};
-        int idx1, idx2, idx3;
 
         #pragma omp for schedule(auto)
         for (int iat = n - 1; iat >= 0; iat--) {
             // iat != jat
             for (int jat = iat - 1; jat >= 0; jat--) {
                 for (int k = tau_idx_cn_total_size - 1; k >= 0 ; k -= 3) {
-                    idx1 = tau_idx_cn[k-2];
-                    idx2 = tau_idx_cn[k-1];
-                    idx3 = tau_idx_cn[k];
-                    rij[0] = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
-                    rij[1] = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
-                    rij[2] = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
-                    r2 = MathExtra::lensq3(rij);
+                    const int idx1 = tau_idx_cn[k-2];
+                    const int idx2 = tau_idx_cn[k-1];
+                    const int idx3 = tau_idx_cn[k];
+                    const double rij[3] = {
+                        x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0],
+                        x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1],
+                        x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2]
+                    };
+                    const double r2 = MathExtra::lensq3(rij);
                     // Assume rthr > cn_thr --> only check for cn_thr
                     if (r2 >= cn_thr) { continue; }
-                    r = sqrt(r2);
-                    rcovij = rcov[(atom->type)[iat]] + rcov[(atom->type)[jat]];
-                    expterm = exp(-K1 * (rcovij / r - 1.0));
-                    dcnn = -K1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                    x1 = dcnn * (dc6i[iat] + dc6i[jat]);
+                    const double r = sqrt(r2);
+                    const double rcovij = rcov[(atom->type)[iat]] + rcov[(atom->type)[jat]];
+                    const double expterm = exp(-K1 * (rcovij / r - 1.0));
+                    const double dcnn = -K1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
+                    const double x1 = dcnn * (dc6i[iat] + dc6i[jat]);
 
-                    vec[0] = x1 * rij[0] / r;
-                    vec[1] = x1 * rij[1] / r;
-                    vec[2] = x1 * rij[2] / r;
+                    const double vec[3] = {
+                        x1 * rij[0] / r,
+                        x1 * rij[1] / r,
+                        x1 * rij[2] / r
+                    };
 
                     f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
                     f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
@@ -1238,26 +1204,29 @@ void PairD3::get_forces_with_dC6() {
 
             // iat == jat
             for (int k = tau_idx_cn_total_size - 1; k >= 0 ; k -= 3) {
-                idx1 = tau_idx_cn[k-2];
-                idx2 = tau_idx_cn[k-1];
-                idx3 = tau_idx_cn[k];
+                const int idx1 = tau_idx_cn[k-2];
+                const int idx2 = tau_idx_cn[k-1];
+                const int idx3 = tau_idx_cn[k];
                 if (idx1 == rep_cn[0] && idx2 == rep_cn[1] && idx3 == rep_cn[2]) { continue; }
-
-                rij[0] = tau_cn[idx1][idx2][idx3][0];
-                rij[1] = tau_cn[idx1][idx2][idx3][1];
-                rij[2] = tau_cn[idx1][idx2][idx3][2];
-                r2 = MathExtra::lensq3(rij);
+                const double rij[3] = {
+                    tau_cn[idx1][idx2][idx3][0],
+                    tau_cn[idx1][idx2][idx3][1],
+                    tau_cn[idx1][idx2][idx3][2],
+                };
+                const double r2 = MathExtra::lensq3(rij);
                 // Assume rthr > cn_thr --> only check for cn_thr
                 if (r2 >= cn_thr) { continue; }
-                r = sqrt(r2);
-                rcovij = rcov[(atom->type)[iat]] + rcov[(atom->type)[iat]];
-                expterm = exp(-K1 * (rcovij / r - 1.0));
-                dcnn = -K1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                x1 = dcnn * dc6i[iat];
+                const double r = sqrt(r2);
+                const double rcovij = rcov[(atom->type)[iat]] + rcov[(atom->type)[iat]];
+                const double expterm = exp(-K1 * (rcovij / r - 1.0));
+                const double dcnn = -K1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
+                const double x1 = dcnn * dc6i[iat];
 
-                vec[0] = x1 * rij[0] / r;
-                vec[1] = x1 * rij[1] / r;
-                vec[2] = x1 * rij[2] / r;
+                const double vec[3] = {
+                    x1 * rij[0] / r,
+                    x1 * rij[1] / r,
+                    x1 * rij[2] / r
+                };
 
                 sigma_local[0][0] += vec[0] * rij[0];
                 sigma_local[0][1] += vec[0] * rij[1];
