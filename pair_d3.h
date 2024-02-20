@@ -75,9 +75,7 @@ namespace LAMMPS_NS {
 
 
         /* ------- Lattice information ------- */
-        double get_rep_cell(double*, double*, double);
-        void set_criteria(double, int*);
-        void inv_cell(double**, double**);
+        void set_lattice_repetition_criteria(double, int*);
         void set_lattice_vectors();
         /* ------- Lattice information ------- */
 
@@ -89,9 +87,7 @@ namespace LAMMPS_NS {
 
 
         /* ------- Initialize & Precalculate ------- */
-        void initialize_array();
-        void shift_atom_coord(double*, double*);
-        void get_tau(double, double, double, double*);
+        void load_atom_info();
         void precalculate_tau_array();
         /* ------- Initialize & Precalculate ------- */
 
@@ -102,36 +98,28 @@ namespace LAMMPS_NS {
 
 
         /* ------- Coordination number ------- */
-        void gather_cn();
+        void get_coordination_number();
         void get_dC6_dCNij();
         /* ------- Coordination number ------- */
 
 
-        /* ------- Calculate atomic distance ------- */
-        double get_distance_with_tau(double*, int, int);
-        /* ------- Calculate atomic distance ------- */
-
-
         /* ------- Main workers ------- */
-        void calculate_force_coefficients();
-        void get_forces();
+        void get_forces_without_dC6();
+        void get_forces_with_dC6();
         void update(int, int);
         /* ------- Main workers ------- */
 
 
         /*--------- Constants ---------*/
-        int maxat;              // maximum number of total atoms
-        int max_elem;           // maximum of the element number
-        int maxc;               // maximum coordination number references per element
 
-        double au_to_ang;       // conversion factors (atomic unit --> angstrom)
-        double au_to_kcal;      // conversion factors (atomic unit --> kcal)
-        double au_to_ev;        // conversion factors (atomic unit --> eV)
-        double c6conv;          //  J/mol nm^6 - > au
+        static constexpr int MAX_ELEM = 94;          // maximum of the element number
+        static constexpr int MAXC = 5;               // maximum coordination number references per element
 
-        double k1;              // global ad hoc parameters
-        double k2;              // global ad hoc parameters
-        double k3;              // global ad hoc parameters
+        static constexpr double AU_TO_ANG = 0.52917726; // conversion factors (atomic unit --> angstrom)
+        static constexpr double AU_TO_EV = 27.21138505; // conversion factors (atomic unit --> eV)
+
+        static constexpr double K1 = 16.0;              // global ad hoc parameters
+        static constexpr double K3 = -4.0;              // global ad hoc parameters
         /*--------- Constants ---------*/
 
 
@@ -148,14 +136,9 @@ namespace LAMMPS_NS {
 
 
         /*--------- Lattice related values ---------*/
-        double** lat;                       // For conversion of coordination
-        double** lat_inv = nullptr;         // For conversion of coordination
         double* lat_v_1 = nullptr;          // lattice coordination vector
         double* lat_v_2 = nullptr;          // lattice coordination vector
         double* lat_v_3 = nullptr;          // lattice coordination vector
-        double* lat_cp_12 = nullptr;        // Cross product of lat_v_1, lat_v_2
-        double* lat_cp_23 = nullptr;        // Cross product of lat_v_2, lat_v_3
-        double* lat_cp_31 = nullptr;        // Cross product of lat_v_3, lat_v_1
         int* rep_vdw = nullptr;             // repetition of cell for calculating D3
         int* rep_cn = nullptr;              // repetition of cell for calculating
                                             // coordination number
@@ -167,7 +150,6 @@ namespace LAMMPS_NS {
         double* cn = nullptr;               // Coordination numbers
         double** x = nullptr;               // Positions
         double** f = nullptr;               // Forces
-        int* iz = nullptr;                  // Atom types
         double* dc6i = nullptr;             // dC6i(iat) saves dE_dsp/dCN(iat)
         /*--------- Per-atom values/arrays ---------*/
 
