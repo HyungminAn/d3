@@ -14,6 +14,7 @@
 // Contributing author: Axel Kohlmeyer, Temple University, akohlmey@gmail.com
 
 #include "pair_d3.h"
+#include "neighbor.h"
 
 using namespace LAMMPS_NS;
 
@@ -22,7 +23,6 @@ using namespace LAMMPS_NS;
 ------------------------------------------------------------------------- */
 
 PairD3::PairD3(LAMMPS* lmp) : Pair(lmp) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> Creation of PairD3::PairD3 <<<\n");
 
     single_enable = 0;      // potential is not pair-wise additive.
     restartinfo = 0;        // Many-body potentials are usually not
@@ -31,19 +31,15 @@ PairD3::PairD3(LAMMPS* lmp) : Pair(lmp) {
                             // parameters from a file, so only one
                             // pair_coeff statement is needed.
     manybody_flag = 1;
-
-    maxat = 20000;
-    max_elem = 94;
+    /*
     maxc = 5;
-
     au_to_ang = 0.52917726;
-    au_to_kcal = 627.509541;
+    //au_to_kcal = 627.509541;
     au_to_ev = 27.21138505;
-
     k1 = 16.0;
     k2 = 4.0 / 3.0;
     k3 = -4.0;
-
+    */
 }
 
 /* ----------------------------------------------------------------------
@@ -51,7 +47,6 @@ PairD3::PairD3(LAMMPS* lmp) : Pair(lmp) {
 ------------------------------------------------------------------------- */
 
 PairD3::~PairD3() {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> Destruction of PairD3::PairD3 <<<\n");
     if (allocated) {
         memory->destroy(setflag);
         memory->destroy(cutsq);
@@ -60,41 +55,6 @@ PairD3::~PairD3() {
         memory->destroy(mxc);
         memory->destroy(r0ab);
         memory->destroy(c6ab);
-
-        memory->destroy(lat);
-        memory->destroy(lat_inv);
-        memory->destroy(lat_v_1);
-        memory->destroy(lat_v_2);
-        memory->destroy(lat_v_3);
-        memory->destroy(lat_cp_12);
-        memory->destroy(lat_cp_23);
-        memory->destroy(lat_cp_31);
-
-        memory->destroy(rep_vdw);
-        memory->destroy(rep_cn);
-        memory->destroy(cn);
-        memory->destroy(x);
-
-        memory->destroy(iz);
-        memory->destroy(dc6i);
-        memory->destroy(f);
-
-        memory->destroy(sigma);
-
-        memory->destroy(tau_vdw);
-        memory->destroy(tau_cn);
-        memory->destroy(tau_idx_vdw);
-        memory->destroy(tau_idx_cn);
-
-        memory->destroy(dc6_iji_tot);
-        memory->destroy(dc6_ijj_tot);
-        memory->destroy(c6_ij_tot);
-
-        memory->destroy(dc6i_private);
-        memory->destroy(disp_private);
-        memory->destroy(f_private);
-        memory->destroy(sigma_private);
-        memory->destroy(cn_private);
     }
 }
 
@@ -103,7 +63,6 @@ PairD3::~PairD3() {
 ------------------------------------------------------------------------- */
 
 void PairD3::allocate() {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::Allocation <<<\n");
     allocated = 1;
 
     /* atom->ntypes : # of elements; element index starts from 1 */
@@ -115,32 +74,12 @@ void PairD3::allocate() {
     memory->create(mxc, np1, "pair:mxc");
     memory->create(r0ab, np1, np1, "pair:r0ab");
     memory->create(c6ab, np1, np1, maxc, maxc, 3, "pair:c6");
-    memory->create(lat, 3, 3, "pair:lat");
-    memory->create(lat_inv, 3, 3, "pair:lat");
-    memory->create(lat_v_1, 3, "pair:lat");
-    memory->create(lat_v_2, 3, "pair:lat");
-    memory->create(lat_v_3, 3, "pair:lat");
-    memory->create(lat_cp_12, 3, "pair:lat");
-    memory->create(lat_cp_23, 3, "pair:lat");
-    memory->create(lat_cp_31, 3, "pair:lat");
-    memory->create(rep_vdw, 3, "pair:rep_vdw");
-    memory->create(rep_cn, 3, "pair:rep_cn");
-    memory->create(sigma, 3, 3, "pair:sigma");
 
     int natoms = atom->natoms;
     n_save = natoms;
 
     memory->create(cn, natoms, "pair:cn");
-    memory->create(x, natoms, 3, "pair:x");
-    memory->create(iz, natoms, "pair:iz");
     memory->create(dc6i, natoms, "pair:dc6i");
-    memory->create(f, natoms, 3, "pair:f");
-
-    // Initialization (by function)
-    set_lattice_vectors();
-
-    set_criteria(rthr, rep_vdw);
-    set_criteria(cn_thr, rep_cn);
 
     // Initialization
     for (int i = 1; i < np1; i++) {
@@ -160,48 +99,37 @@ void PairD3::allocate() {
             }
         }
     }
-
-    int dim_drij_1 = natoms * (natoms + 1) / 2;
-    int dim_drij_2 = 2 * rep_vdw[0] + 1;
-    int dim_drij_3 = 2 * rep_vdw[1] + 1;
-    int dim_drij_4 = 2 * rep_vdw[2] + 1;
-
-    memory->create(tau_vdw, dim_drij_2, dim_drij_3, dim_drij_4, 3, "pair:tau_vdw");
-    memory->create(tau_cn, 2*rep_cn[0]+1, 2*rep_cn[1]+1, 2*rep_cn[2]+1, 3, "pair:tau_cn");
-
-    int size_taux_vdw = 2 * rep_vdw[0] + 1;
-    int size_tauy_vdw = 2 * rep_vdw[1] + 1;
-    int size_tauz_vdw = 2 * rep_vdw[2] + 1;
-    tau_idx_vdw_total_size = size_taux_vdw * size_tauy_vdw * size_tauz_vdw * 3;
-    memory->create(tau_idx_vdw, tau_idx_vdw_total_size, "pair:tau_idx_vdw");
-
-    int size_taux_cn = 2 * rep_cn[0] + 1;
-    int size_tauy_cn = 2 * rep_cn[1] + 1;
-    int size_tauz_cn = 2 * rep_cn[2] + 1;
-    tau_idx_cn_total_size = size_taux_cn * size_tauy_cn * size_tauz_cn * 3;
-    memory->create(tau_idx_cn, tau_idx_cn_total_size, "pair:tau_idx_cn");
-
-    memory->create(dc6_iji_tot, dim_drij_1, "pair_dc6_iji_tot");
-    memory->create(dc6_ijj_tot, dim_drij_1, "pair_dc6_ijj_tot");
-    memory->create(c6_ij_tot, dim_drij_1, "pair_c6_ij_tot");
-
 }
 
+void PairD3::reallocate_arrays() {
+    /* -------------- Destroy previous arrays -------------- */
+    memory->destroy(cn);
+    memory->destroy(dc6i);
+    /* -------------- Destroy previous arrays -------------- */
+
+    /* -------------- Create new arrays -------------- */
+    int natoms = atom->natoms;
+    n_save = natoms;
+    int nthreads = omp_get_max_threads();
+
+    memory->create(cn, natoms, "pair:cn");
+    memory->create(dc6i, natoms, "pair:dc6i");
+    /* -------------- Create new arrays -------------- */
+}
 /* ----------------------------------------------------------------------
    Settings: read from pair_style (Required)
              pair_style   d3  rthr cn_thr
 ------------------------------------------------------------------------- */
 
 void PairD3::settings(int narg, char **arg) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::Settings <<<\n");
     if (narg != 2) {
         error->all(FLERR, "Pair_style d3 needs two arguments: rthr, cn_thr");
     }
     rthr = utils::numeric(FLERR, arg[0], false, lmp);
     cn_thr = utils::numeric(FLERR, arg[1], false, lmp);
 
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> rthr: %f <<<\n", rthr);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> cn_thr: %f <<<\n", cn_thr);
+    sq_vdw_ang = rthr * au_to_ang * au_to_ang;
+    sq_cn_ang = cn_thr * au_to_ang * au_to_ang;
 }
 
 
@@ -210,7 +138,6 @@ void PairD3::settings(int narg, char **arg) {
 ------------------------------------------------------------------------- */
 
 int PairD3::find_atomic_number(std::string& key) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::find_atomic_number <<<\n");
 
     std::transform(key.begin(), key.end(), key.begin(), ::tolower);
     if (key.length() == 1) { key += " "; }
@@ -260,7 +187,6 @@ int PairD3::is_int_in_array(int arr[], int size, int value) {
 ------------------------------------------------------------------------- */
 
 void PairD3::read_r0ab(LAMMPS* lmp, char* path_r0ab, int* atomic_numbers, int ntypes) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::read_r0ab <<<\n");
 
     int idx_atom_1 = -1, idx_atom_2 = -1;
     double value = 0;
@@ -270,7 +196,6 @@ void PairD3::read_r0ab(LAMMPS* lmp, char* path_r0ab, int* atomic_numbers, int nt
 
     PotentialFileReader r0ab_reader(lmp, path_r0ab, "d3");
 
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> Start read %s ...<<<\n", path_r0ab);
     while ((line = r0ab_reader.next_line(nparams_per_line))) {
         idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, row_idx);
         // Skip for the other rows
@@ -317,7 +242,6 @@ void PairD3::get_limit_in_pars_array(int& idx_atom_1, int& idx_atom_2, int& idx_
 ------------------------------------------------------------------------- */
 
 void PairD3::read_c6ab(LAMMPS* lmp, char* path_c6ab, int* atomic_numbers, int ntypes) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::read_c6ab <<<\n");
 
     for (int i = 1; i <= ntypes; i++) { mxc[i] = 0; }
 
@@ -364,7 +288,6 @@ void PairD3::read_c6ab(LAMMPS* lmp, char* path_c6ab, int* atomic_numbers, int nt
 ------------------------------------------------------------------------- */
 
 void PairD3::setfuncpar(char* functional_name) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::setfuncpar <<<\n");
     // set parameters for the given functionals
     // DFT-D3
     s6 = 1.0;
@@ -443,14 +366,6 @@ void PairD3::setfuncpar(char* functional_name) {
     alp6 = alp;
     alp8 = alp + 2.0;
 
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> s6 : %f <<<\n", s6);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> s18 : %f <<<\n", s18);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> rs6 : %f <<<\n", rs6);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> alp : %f <<<\n", alp);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> alp6 : %f <<<\n", alp6);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> alp8 : %f <<<\n", alp8);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> rs18 : %f <<<\n", rs18);
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t\t\t>>> rs8 : %f <<<\n", rs8);
 }
 
 /* ----------------------------------------------------------------------
@@ -459,7 +374,6 @@ void PairD3::setfuncpar(char* functional_name) {
 ------------------------------------------------------------------------- */
 
 void PairD3::coeff(int narg, char **arg) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::coeff <<<\n");
     if (!allocated) allocate();
     if (narg < 3) {
         error->all(FLERR, "Pair_coeff * * needs: r0ab.csv c6ab.csv functional element1 element2 ...");
@@ -574,818 +488,240 @@ void PairD3::coeff(int narg, char **arg) {
     setfuncpar(arg[4]);
 
     free(atomic_numbers);
-
-    if (lmp->logfile) {
-        for (int i = 0; i <= atom->ntypes; i++) {
-            fprintf(lmp->logfile, "\t\t\t\t>>> r2r4[i] = %f <<<\n", r2r4[i]);
-        }
-        for (int i = 0; i <= atom->ntypes; i++) {
-            fprintf(lmp->logfile, "\t\t\t\t>>> rcov[i] = %f <<<\n", rcov[i]);
-        }
-    }
-
 }
 
 /* ----------------------------------------------------------------------
-   Get derivative of C6 w.r.t. CN (used in PairD3::compute)
+   Get derivative of C6 w.r.t. CN 
 ------------------------------------------------------------------------- */
 
-void PairD3::get_dC6_dCNij() {
-    int n = atom->natoms;
-
-    #pragma omp parallel
-    {
-        double c6mem;
-        double r, r_save;
-        double c6ref;
-        double cn_refi, cn_refj;
-        double expterm, term;
-        double numerator, denominator, d_numerator_i, d_denominator_i, d_numerator_j, d_denominator_j;
-        int izi, izj, mxci, mxcj;
-        double cni, cnj;
-        int idx_linij;
-
-        #pragma omp for schedule(auto)
-        for (int iat = n - 1; iat >= 0; iat--) {
-            for (int jat = iat; jat >= 0; jat--) {
-                izi = iz[iat];
-                cni = cn[iat];
-                mxci = mxc[izi];
-
-                izj = iz[jat];
-                cnj = cn[jat];
-                mxcj = mxc[izj];
-
-                c6mem = -1e99;
-                r_save = 9999.0;
-                numerator = 0.0;
-                denominator = 0.0;
-                d_numerator_i = 0.0;
-                d_denominator_i = 0.0;
-                d_numerator_j = 0.0;
-                d_denominator_j = 0.0;
-                idx_linij = jat + (iat + 1) * iat / 2;
-
-                for (int a = 0; a < mxci; a++) {
-                    for (int b = 0; b < mxcj; b++) {
-                        c6ref = c6ab[izi][izj][a][b][0];
-
-                        if (c6ref > 0) {
-                            cn_refi = c6ab[izi][izj][a][b][1];
-                            cn_refj = c6ab[izi][izj][a][b][2];
-                            // Corresponds to L_ij (in D3 paper)
-                            r = (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
-                            if (r < r_save) {
-                                r_save = r;
-                                c6mem = c6ref;
-                            }
-
-                            expterm = exp(k3 * r);
-                            // numerator and denominator of C6 (Z and W in D3 paper)
-                            numerator += c6ref * expterm;
-                            denominator += expterm;
-
-                            expterm *= 2.0 * k3;
-
-                            term = expterm * (cni - cn_refi);
-                            d_numerator_i += c6ref * term;
-                            d_denominator_i += term;
-
-                            term = expterm * (cnj - cn_refj);
-                            d_numerator_j += c6ref * term;
-                            d_denominator_j += term;
-                        }
-                    } // b
-                } // a
-
-                if (denominator > 1e-99) {
-                    c6_ij_tot[idx_linij] = numerator / denominator;
-                    dc6_iji_tot[idx_linij] = ((d_numerator_i * denominator) - (d_denominator_i * numerator)) / (denominator * denominator);
-                    dc6_ijj_tot[idx_linij] = ((d_numerator_j * denominator) - (d_denominator_j * numerator)) / (denominator * denominator);
-                }
-                else {
-                    c6_ij_tot[idx_linij] = c6mem;
-                    dc6_iji_tot[idx_linij] = 0.0;
-                    dc6_ijj_tot[idx_linij] = 0.0;
-                }
-            } // jat
-        } // iat
-    } // omp parallel
-}
-
 /* ----------------------------------------------------------------------
-   Get lattice vectors (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-void PairD3::set_lattice_vectors() {
-    double boxxlo = domain->boxlo[0];
-    double boxxhi = domain->boxhi[0];
-    double boxylo = domain->boxlo[1];
-    double boxyhi = domain->boxhi[1];
-    double boxzlo = domain->boxlo[2];
-    double boxzhi = domain->boxhi[2];
-    double xy = domain->xy;
-    double xz = domain->xz;
-    double yz = domain->yz;
-
-    lat_v_1[0] = (boxxhi - boxxlo) / au_to_ang;
-    lat_v_1[1] = 0.0;
-    lat_v_1[2] = 0.0;
-    lat_v_2[0] = xy / au_to_ang;
-    lat_v_2[1] = (boxyhi - boxylo) / au_to_ang;
-    lat_v_2[2] = 0.0;
-    lat_v_3[0] = xz / au_to_ang;
-    lat_v_3[1] = yz / au_to_ang;
-    lat_v_3[2] = (boxzhi - boxzlo) / au_to_ang;
-
-    MathExtra::cross3(lat_v_1, lat_v_2, lat_cp_12);
-    MathExtra::cross3(lat_v_2, lat_v_3, lat_cp_23);
-    MathExtra::cross3(lat_v_3, lat_v_1, lat_cp_31);
-
-    lat[0][0] = lat_v_1[0];
-    lat[0][1] = lat_v_2[0];
-    lat[0][2] = lat_v_3[0];
-    lat[1][0] = lat_v_1[1];
-    lat[1][1] = lat_v_2[1];
-    lat[1][2] = lat_v_3[1];
-    lat[2][0] = lat_v_1[2];
-    lat[2][1] = lat_v_2[2];
-    lat[2][2] = lat_v_3[2];
-
-    inv_cell(lat, lat_inv);
-
-}
-
-/* ----------------------------------------------------------------------
-   Get repetition of cell (used in PairD3::set_criteria)
-------------------------------------------------------------------------- */
-
-double PairD3::get_rep_cell(double* v, double* v_cp, double r_cutoff) {
-    double cos_value = MathExtra::dot3(v_cp, v) / MathExtra::len3(v_cp);
-    return std::abs(r_cutoff / cos_value);
-}
-
-/* ----------------------------------------------------------------------
-   Set repetition criteria (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-void PairD3::set_criteria(double r_threshold, int* rep_v) {
-    double r_cutoff = sqrt(r_threshold);
-    rep_v[0] = static_cast<int>(get_rep_cell(lat_v_1, lat_cp_23, r_cutoff)) + 1;
-    rep_v[1] = static_cast<int>(get_rep_cell(lat_v_2, lat_cp_31, r_cutoff)) + 1;
-    rep_v[2] = static_cast<int>(get_rep_cell(lat_v_3, lat_cp_12, r_cutoff)) + 1;
-}
-
-/* ----------------------------------------------------------------------
-   Get tau vector
-------------------------------------------------------------------------- */
-
-void PairD3::get_tau(double taux, double tauy, double tauz, double tau_vec[3]) {
-    tau_vec[0] = lat_v_1[0] * taux + lat_v_2[0] * tauy + lat_v_3[0] * tauz;
-    tau_vec[1] = lat_v_1[1] * taux + lat_v_2[1] * tauy + lat_v_3[1] * tauz;
-    tau_vec[2] = lat_v_1[2] * taux + lat_v_2[2] * tauy + lat_v_3[2] * tauz;
-}
-
-/* ----------------------------------------------------------------------
-   get distance with tau (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-inline double PairD3::get_distance_with_tau(double* tau, int idx_1, int idx_2) {
-    double dx = x[idx_1][0] - x[idx_2][0] + tau[0];
-    double dy = x[idx_1][1] - x[idx_2][1] + tau[1];
-    double dz = x[idx_1][2] - x[idx_2][2] + tau[2];
-    return dx * dx + dy * dy + dz * dz;
-}
-
-/* ----------------------------------------------------------------------
-   Calculate CN (used in PairD3::compute)
+   Calculate CN
 ------------------------------------------------------------------------- */
 
 void PairD3::gather_cn() {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::gather_cn <<<\n");
-
     int nthreads = omp_get_max_threads();
     int n = atom->natoms;
-
-    #pragma omp parallel
-    {
-        const int ithread = omp_get_thread_num();
-
-        double r, r2;        // rAB in the paper
-        double damp;     // fractional coordinate number
-        int idx1, idx2, idx3;
-
-        #pragma omp for schedule(auto)
-        for (int iat = n - 1; iat >= 0; iat--) {
-            for (int jat = iat - 1; jat >= 0; jat--) {
-                for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
-                    idx1 = tau_idx_cn[k-2];
-                    idx2 = tau_idx_cn[k-1];
-                    idx3 = tau_idx_cn[k];
-                    r2 = get_distance_with_tau(tau_cn[idx1][idx2][idx3], jat, iat);
-                    if (r2 > cn_thr) { continue; }
-                    r = sqrt(r2);
-
-                    damp = 1.0 / (1.0 + exp(-k1 * (((rcov[iz[iat]] + rcov[iz[jat]]) / r) - 1.0)));
-                    cn_private[ithread * n + iat] += damp;
-                } // k
-            } // jat
-
-            for (int jat = n - 1; jat > iat; jat--) {
-                for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
-                    idx1 = tau_idx_cn[k-2];
-                    idx2 = tau_idx_cn[k-1];
-                    idx3 = tau_idx_cn[k];
-                    r2 = get_distance_with_tau(tau_cn[idx1][idx2][idx3], jat, iat);
-                    if (r2 > cn_thr) { continue; }
-                    r = sqrt(r2);
-
-                    damp = 1.0 / (1.0 + exp(-k1 * (((rcov[iz[iat]] + rcov[iz[jat]]) / r) - 1.0)));
-                    cn_private[ithread * n + iat] += damp;
-                } // k
-            } // jat
-
-            for (int k = tau_idx_cn_total_size - 1; k >= 0; k -= 3) {
-                // skip for the same atoms
-                idx1 = tau_idx_cn[k-2];
-                idx2 = tau_idx_cn[k-1];
-                idx3 = tau_idx_cn[k];
-                if (   idx1 == rep_cn[0]
-                    && idx2 == rep_cn[1]
-                    && idx3 == rep_cn[2]) {continue; }
-                r2 = get_distance_with_tau(tau_cn[idx1][idx2][idx3], iat, iat);
-                if (r2 > cn_thr) { continue; }
-                r = sqrt(r2);
-
-                damp = 1.0 / (1.0 + exp(-k1 * (((rcov[iz[iat]] + rcov[iz[iat]]) / r) - 1.0)));
-                cn_private[ithread * n + iat] += damp;
-            } // k
-
-        } // iat
-    } // omp parallel
-
-    for (int rank = 0; rank < nthreads; rank++) {
-        for (int iat = 0; iat < n; iat++) {
-            if (rank == 0) { cn[iat] = cn_private[rank * n + iat]; }
-            else { cn[iat] += cn_private[rank * n + iat]; }
-        } // iat
-    } // rank
-
-}
-
-
-/* ----------------------------------------------------------------------
-   inverse cell (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-void PairD3::inv_cell(double** x, double** a) {
-    // Assume that a is a 3 by 3 zero-matrix.
-
-    double det = x[0][0] * x[1][1] * x[2][2] + x[0][1] * x[1][2] * x[2][0] + x[0][2] * x[1][0] * x[2][1] \
-        - x[0][2] * x[1][1] * x[2][0] - x[0][1] * x[1][0] * x[2][2] - x[0][0] * x[1][2] * x[2][1];
-
-    a[0][0] = (x[1][1] * x[2][2] - x[1][2] * x[2][1]) / det;
-    a[1][0] = (x[1][2] * x[2][0] - x[1][0] * x[2][2]) / det;
-    a[2][0] = (x[1][0] * x[2][1] - x[1][1] * x[2][0]) / det;
-    a[0][1] = (x[0][2] * x[2][1] - x[0][1] * x[2][2]) / det;
-    a[1][1] = (x[0][0] * x[2][2] - x[0][2] * x[2][0]) / det;
-    a[2][1] = (x[0][1] * x[2][0] - x[0][0] * x[2][1]) / det;
-    a[0][2] = (x[0][1] * x[1][2] - x[0][2] * x[1][1]) / det;
-    a[1][2] = (x[0][2] * x[1][0] - x[0][0] * x[1][2]) / det;
-    a[2][2] = (x[0][0] * x[1][1] - x[0][1] * x[1][0]) / det;
-}
-
-/* ----------------------------------------------------------------------
-   reallcate memory if the number of atoms has changed (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-void PairD3::reallocate_arrays() {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::reallocate_arrays <<<\n");
-
-    /* -------------- Destroy previous arrays -------------- */
-    memory->destroy(cn);
-    memory->destroy(x);
-    memory->destroy(iz);
-    memory->destroy(dc6i);
-    memory->destroy(f);
-    memory->destroy(tau_idx_vdw);
-    memory->destroy(tau_idx_cn);
-
-    memory->destroy(dc6_iji_tot);
-    memory->destroy(dc6_ijj_tot);
-    memory->destroy(c6_ij_tot);
-
-    memory->destroy(dc6i_private);
-    memory->destroy(disp_private);
-    memory->destroy(f_private);
-    memory->destroy(sigma_private);
-    memory->destroy(cn_private);
-
-    /* -------------- Destroy previous arrays -------------- */
-
-    /* -------------- Create new arrays -------------- */
-    int natoms = atom->natoms;
-    n_save = natoms;
-
-    memory->create(cn, natoms, "pair:cn");
-    memory->create(x, natoms, 3, "pair:x");
-    memory->create(iz, natoms, "pair:iz");
-    memory->create(dc6i, natoms, "pair:dc6i");
-    memory->create(f, natoms, 3, "pair:f");
-
-    set_lattice_vectors();
-    set_criteria(rthr, rep_vdw);
-    set_criteria(cn_thr, rep_cn);
-
-    int size_taux_vdw = 2 * rep_vdw[0] + 1;
-    int size_tauy_vdw = 2 * rep_vdw[1] + 1;
-    int size_tauz_vdw = 2 * rep_vdw[2] + 1;
-    tau_idx_vdw_total_size = size_taux_vdw * size_tauy_vdw * size_tauz_vdw * 3;
-    memory->create(tau_idx_vdw, tau_idx_vdw_total_size, "pair:tau_idx_vdw");
-
-    int size_taux_cn = 2 * rep_cn[0] + 1;
-    int size_tauy_cn = 2 * rep_cn[1] + 1;
-    int size_tauz_cn = 2 * rep_cn[2] + 1;
-    tau_idx_cn_total_size = size_taux_cn * size_tauy_cn * size_tauz_cn * 3;
-    memory->create(tau_idx_cn, tau_idx_cn_total_size, "pair:tau_idx_cn");
-
-    int dim_drij_1 = natoms * (natoms + 1) / 2;
-    memory->create(dc6_iji_tot, dim_drij_1, "pair_dc6_iji_tot");
-    memory->create(dc6_ijj_tot, dim_drij_1, "pair_dc6_ijj_tot");
-    memory->create(c6_ij_tot, dim_drij_1, "pair_c6_ij_tot");
-
-    allocate_for_omp();
-
-    /* -------------- Create new arrays -------------- */
-}
-
-/* ----------------------------------------------------------------------
-   Shift atoms (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-void PairD3::shift_atom_coord(double* xyz, double* xyz_shifted) {
-    double a[3] = {0.0};
-
-    for (int i = 0; i < 3; i++) {
-        a[i] = lat_inv[i][0] * xyz[0] + lat_inv[i][1] * xyz[1] + lat_inv[i][2] * xyz[2];
-        if (a[i] > 1) { while (a[i] > 1) { a[i]--; } }
-        else if (a[i] < 0) { while (a[i] < 0) { a[i]++;} }
-    }
-
-    for (int i = 0; i < 3; i++) {
-        xyz_shifted[i] = lat[i][0] * a[0] + lat[i][1] * a[1] + lat[i][2] * a[2];
+    double **x = atom->x;
+    int *type = atom->type;
+    int *ilist = cn_full->ilist;
+    int *numneigh = cn_full->numneigh;      // j loop cond
+    int **firstneigh = cn_full->firstneigh; // j list
+    for (int ii = 0; ii < n; ii++) { cn[ii] = 0; }
+    #pragma omp parallel for schedule(auto)
+    for (int ii = 0; ii < n; ii++) {
+        const int i = ilist[ii];
+        const double rcovi = rcov[type[i]];
+        const int jnum = numneigh[i];
+        const int *jlist = firstneigh[i];
+        for (int jj = 0; jj < jnum; jj++) {
+            int j = jlist[jj]; // atom over pbc is different atom
+            const double rcovj = rcov[type[j]];
+            const double delij[3] = {x[j][0] - x[i][0], x[j][1] - x[i][1], x[j][2] - x[i][2]};
+            const double r2 = delij[0] * delij[0] + delij[1] * delij[1] + delij[2] * delij[2];
+            if (r2 > sq_cn_ang) { continue; }
+            cn[ii] += 1.0 / (1.0 + exp(-k1 * (((rcovi + rcovj) / (std::sqrt(r2) * ang_to_au)) - 1.0)));
+        }
     }
 }
 
-/* ----------------------------------------------------------------------
-  Initialize arrays (used in PairD3::compute)
-------------------------------------------------------------------------- */
-
-void PairD3::initialize_array() {
-    /* ---- For making a list of indices for every atoms ---- */
+void PairD3::neigh_style_force_compute() {
     int n = atom->natoms;
+    int *type = atom->type;
+    int *ilist = vdw_half->ilist;
+    tagint *tag = atom->tag;  // tag - 1 gives 'ii' or 'iat' index (non-spatial decomposition)
 
-    /* ---- For making a list of xyz for every atoms ---- */
-    for (int i = 0; i < n; i++) {
-        x[i][0] = 0.0;
-        x[i][1] = 0.0;
-        x[i][2] = 0.0;
-    }
+    struct CoordNInfo {
+        double c6;
+        double dc6iji;
+        double dc6ijj;
+        CoordNInfo() {}
+    };
 
-    for (int i = 0; i < n; i++) {
-        shift_atom_coord((atom->x)[i], x[i]);
-        for (int j = 0; j < 3; j++) {
-            x[i][j] /= au_to_ang;
+    std::vector<CoordNInfo> pair_coord_info(n * n);
+
+    #pragma omp parallel for schedule(auto)
+    for (int ii = 0; ii < n; ii++) {
+        const int i = ilist[ii];
+        const int itag = tag[i] - 1;  // same as ii
+        const int itype = type[i];
+        const double cni = cn[itag];
+        const int max_ci = mxc[itype];
+        for (int jj = ii; jj < n; jj++) {
+            // later, we should use r2 to check cutoff w.r.t vdw
+            // This is the case when we use smaller cell (cell param < vdw cutoff * 2)
+            const int j = ilist[jj];
+            const int jtype = type[j];
+            const int jtag = tag[j] - 1;
+            const double cnj = cn[jtag];
+            const int max_cj = mxc[jtype];
+
+            double denominator = 0.0;
+            double numerator = 0.0;
+            double d_numerator_i = 0.0;
+            double d_denominator_i = 0.0;
+            double d_numerator_j = 0.0;
+            double d_denominator_j = 0.0;
+            
+            for (int a = 0; a < max_ci; a++) {
+                for (int b = 0; b < max_cj; b++) {
+                    const double* c6ref_arr = c6ab[itype][jtype][a][b];
+                    const double c6ref = c6ref_arr[0];
+                    if (c6ref <= 0.0) { continue; }  // 0.0 in no ref case isnt it?
+
+                    const double cn_refi = c6ref_arr[1];
+                    const double cn_refj = c6ref_arr[2];
+
+                    const double r =  // this is r of cn (do not confuse)
+                        (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
+                    double expterm = std::exp(k3 * r);
+                    numerator += c6ref * expterm;
+                    denominator += expterm;
+                    expterm *= 2.0 * k3;
+                    double term = expterm * (cni - cn_refi);
+                    d_numerator_i += c6ref * term;
+                    d_denominator_i += term;
+                    term = expterm * (cnj - cn_refj);
+                    d_numerator_j += c6ref * term;
+                    d_denominator_j += term;
+                }
+            }
+            const double c6 = numerator / denominator;
+            const double sq_dnomi = 1 / (denominator * denominator);
+            const double dc6iji = 
+                ((d_numerator_i * denominator) - (d_denominator_i * numerator)) * sq_dnomi;
+            const double dc6ijj = 
+                ((d_numerator_j * denominator) - (d_denominator_j * numerator)) * sq_dnomi;
+            CoordNInfo& cinfoij = pair_coord_info[ii * n + jj];
+            CoordNInfo& cinfoji = pair_coord_info[jj * n + ii];
+            cinfoij.c6 = c6;
+            cinfoij.dc6iji = dc6iji;
+            cinfoij.dc6ijj = dc6ijj;
+            cinfoji.c6 = c6;
+            cinfoji.dc6iji = dc6ijj;
+            cinfoji.dc6ijj = dc6iji;
         }
     }
 
-    /* ---- For making a list of type for every atoms ---- */
-    for (int i = 0; i < n; i++) { iz[i] = 0; }
-    for (int i = 0; i < n; i++) { iz[i] = (atom->type)[i]; }
+    double **x = atom->x;
+    int *numneigh = vdw_half->numneigh;      // j loop cond
+    int **firstneigh = vdw_half->firstneigh; // j list
+    double** f_lammps = atom->f;       // give it to lammps!
+
+    const double s8 = s18;
+
+    double disp_sum = 0.0;
+    for (int ii = 0; ii < n; ii++) { dc6i[ii] = 0.0; }
+
+    #pragma omp parallel for schedule(auto) reduction(+:disp_sum, dc6i[:n])
+    for (int ii = 0; ii < n; ii++) {
+        const int i = ilist[ii];
+        const int itag = tag[i] - 1;  // same as ii
+        const int itype = type[i];
+        const int jnum = numneigh[i];
+        const int *jlist = firstneigh[i];
+        const double cni = cn[itag];
+        const int max_ci = mxc[itype];
+        for (int jj = 0; jj < jnum; jj++) {
+            int j = jlist[jj]; // atom over pbc is different atom
+            const double delij[3] = {(x[j][0] - x[i][0]) / au_to_ang, 
+                                     (x[j][1] - x[i][1]) / au_to_ang, 
+                                     (x[j][2] - x[i][2]) / au_to_ang};
+            const double r2 = delij[0] * delij[0] + delij[1] * delij[1] + delij[2] * delij[2];
+            if (r2 > rthr) { continue; }
+            const int jtype = type[j];
+            const int jtag = tag[j] - 1;
+            // force coeff //
+            const double r = std::sqrt(r2);
+            const double r0 = r0ab[itype][jtype];
+
+            const double base6 = (rs6 * r0) / r;
+            double t6 = base6;
+            t6 *= t6; t6 *= base6; t6 *= t6; t6 *= base6; t6 *= t6;
+            const double damp6 = 1.0 / (1.0 + 6.0 * t6);
+            t6 *= damp6;
+
+            double t8 = (rs8 * r0) / r;
+            t8 *= t8; t8 *= t8; t8 *= t8; t8 *= t8;
+            const double damp8 = 1.0 / (1.0 + 6.0 * t8);
+            t8 *= damp8;
+
+            const double r6 = r2 * r2 * r2;
+            const double r42 = r2r4[itype] * r2r4[jtype];
+            CoordNInfo& cinfoij = pair_coord_info[itag * n + jtag];
+            const double x1 = 6.0 * cinfoij.c6 / (r6 * r) * (s6 * damp6 * (14.0 * t6 - 1.0) + s8 * r42 / r2 * damp8 * (48.0 * t8 - 4.0)) / r * au_to_ev / au_to_ang;
+            const double vec[3] = { x1 * delij[0], x1 * delij[1], x1 * delij[2] };
+
+            #pragma omp atomic
+            f_lammps[i][0] -= vec[0];
+            #pragma omp atomic
+            f_lammps[i][1] -= vec[1];
+            #pragma omp atomic
+            f_lammps[i][2] -= vec[2];
+            #pragma omp atomic
+            f_lammps[j][0] += vec[0];
+            #pragma omp atomic
+            f_lammps[j][1] += vec[1];
+            #pragma omp atomic
+            f_lammps[j][2] += vec[2];
+
+            const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 / r2) / r6;
+            disp_sum -= dc6_rest * cinfoij.c6;  // energy
+            dc6i[itag] += dc6_rest * cinfoij.dc6iji;
+            dc6i[jtag] += dc6_rest * cinfoij.dc6ijj;
+        }
+    }
+    eng_vdwl += disp_sum * au_to_ev;
 }
 
-/* ----------------------------------------------------------------------
-   Precalculate tau array
-------------------------------------------------------------------------- */
 
-void PairD3::precalculate_tau_array() {
-    int xlim = rep_vdw[0];
-    int ylim = rep_vdw[1];
-    int zlim = rep_vdw[2];
-    double**** tau = tau_vdw;
-
-    int index = 0;
-    for (int taux = -xlim; taux <= xlim; taux++) {
-        for (int tauy = -ylim; tauy <= ylim; tauy++) {
-            for (int tauz = -zlim; tauz <= zlim; tauz++) {
-                get_tau(taux, tauy, tauz, tau[taux + xlim][tauy + ylim][tauz + zlim]);
-                tau_idx_vdw[index++] = taux + xlim;
-                tau_idx_vdw[index++] = tauy + ylim;
-                tau_idx_vdw[index++] = tauz + zlim;
-            }
-        }
-    }
-
-    xlim = rep_cn[0];
-    ylim = rep_cn[1];
-    zlim = rep_cn[2];
-    tau = tau_cn;
-
-    index = 0;
-    for (int taux = -xlim; taux <= xlim; taux++) {
-        for (int tauy = -ylim; tauy <= ylim; tauy++) {
-            for (int tauz = -zlim; tauz <= zlim; tauz++) {
-                get_tau(taux, tauy, tauz, tau_cn[taux + xlim][tauy + ylim][tauz + zlim]);
-                tau_idx_cn[index++] = taux + xlim;
-                tau_idx_cn[index++] = tauy + ylim;
-                tau_idx_cn[index++] = tauz + zlim;
-            }
-        }
-    }
-}
-
-
-/* ----------------------------------------------------------------------
-   Get force coefficients
-------------------------------------------------------------------------- */
-
-void PairD3::calculate_force_coefficients() {
+void PairD3::neigh_style_get_force() {
     int n = atom->natoms;
+    double **x = atom->x;
+    int *type = atom->type;
+    int *ilist = cn_half->ilist;
+    int *numneigh = cn_half->numneigh;      // j loop cond
+    int **firstneigh = cn_half->firstneigh; // j list
+    tagint *tag = atom->tag;
+    double** f_lammps = atom->f;       // Local force of atoms
 
-    for (int dim = 0; dim < n; dim++) { dc6i[dim] = 0.0; }
+    #pragma omp parallel for schedule(auto)
+    for (int ii = 0; ii < n; ii++) {
+        const int i = ilist[ii];
+        const int itag = tag[i] - 1;
+        const int itype = type[i];
+        const int jnum = numneigh[i];
+        const int *jlist = firstneigh[i];
+        const double cni = cn[itag];
+        for (int jj = 0; jj < jnum; jj++) {
+            int j = jlist[jj]; // atom over pbc is different atom
+            const double delij[3] = {(x[j][0] - x[i][0]) / au_to_ang, 
+                                     (x[j][1] - x[i][1]) / au_to_ang, 
+                                     (x[j][2] - x[i][2]) / au_to_ang};
+            const double r2 = delij[0] * delij[0] + delij[1] * delij[1] + delij[2] * delij[2];
+            if (r2 > cn_thr) { continue; }
 
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < 3; j++) {
-            f[i][j] = 0.0;
+            const int jtype = type[j];
+            const int jtag = tag[j] - 1;
+            const double r = std::sqrt(r2);
+            const double rcovij = rcov[itype] + rcov[jtype];
+            const double expterm = std::exp(-k1 * (rcovij / r - 1.0));
+            const double dcnn = -k1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
+            const double x1 = dcnn * (dc6i[itag] + dc6i[jtag]) / r * au_to_ev / au_to_ang;
+            const double vec[3] = { x1 * delij[0], x1 * delij[1], x1 * delij[2] };
+            #pragma omp atomic
+            f_lammps[i][0] -= vec[0];
+            #pragma omp atomic
+            f_lammps[i][1] -= vec[1];
+            #pragma omp atomic
+            f_lammps[i][2] -= vec[2];
+            #pragma omp atomic
+            f_lammps[j][0] += vec[0];
+            #pragma omp atomic
+            f_lammps[j][1] += vec[1];
+            #pragma omp atomic
+            f_lammps[j][2] += vec[2];
         }
     }
-
-    double disp = 0.0;                  // stores energy (sanity check)
-    int nthreads = omp_get_max_threads();
-
-    #pragma omp parallel
-    {
-        const int ithread = omp_get_thread_num();
-
-        double c6 = 0.0;                    // To save C6
-        double dc6iji = 0.0, dc6ijj = 0.0;  // Derivative of C6 values
-        double r0 = 0.0;                    // To save R0 : Covalent bond length
-        double r42 = 0.0;                   // To save r2r4
-        int idx_linij = 0;
-        double r = 0.0, r2 = 0.0;           // Atomic distance and square of it
-        double r6 = 0.0, r7 = 0.0; // Power of r
-        double t6 = 0.0, t8 = 0.0;          // dummy variable for calculation
-        double damp6 = 0.0, damp8 = 0.0;    // dummy variable for calculation
-        double s8 = s18;                    // D3 parameter for 8th-power term (just use s8 from beginning?)
-        double dc6_rest = 0.0;
-        double x1;
-        double disp_sum = 0.0;
-        double tmp_v = 0.0;
-        int idx1, idx2, idx3;
-        double rij[3];
-        double vec[3];
-        double sigma_local[3][3] = {{ 0.0 }};
-        const double r2_rthr = rthr;
-
-        #pragma omp for schedule(auto)
-        for (int iat = n - 1; iat >= 0; iat--) {
-            for (int jat = iat - 1; jat >= 0; jat--) {
-                r0 = r0ab[iz[iat]][iz[jat]];
-                r42 = r2r4[iz[iat]] * r2r4[iz[jat]];
-                idx_linij = jat + (iat + 1) * iat / 2;
-                for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
-                    // cutoff radius check
-                    idx1 = tau_idx_vdw[k-2];
-                    idx2 = tau_idx_vdw[k-1];
-                    idx3 = tau_idx_vdw[k];
-                    rij[0] = x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0];
-                    rij[1] = x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1];
-                    rij[2] = x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2];
-                    r2 = MathExtra::lensq3(rij);
-                    if (r2 > r2_rthr) { continue; }
-
-                    r = sqrt(r2);
-
-                    // Calculates damping functions
-                    // alp6 = 14.0, alp8 = 16.0
-                    tmp_v = (rs6 * r0) / r;
-                    t6 = tmp_v;
-                    t6 *= t6;       // ^2
-                    t6 *= tmp_v;    // ^3
-                    t6 *= t6;       // ^6
-                    t6 *= tmp_v;    // ^7
-                    t6 *= t6;       // ^14
-                    damp6 = 1.0 / (1.0 + 6.0 * t6);
-                    t6 *= damp6;    // pre-calculation
-                    t8 = (rs8 * r0) / r;
-                    t8 *= t8;       // ^2
-                    t8 *= t8;       // ^4
-                    t8 *= t8;       // ^8
-                    t8 *= t8;       // ^16
-                    damp8 = 1.0 / (1.0 + 6.0 * t8);
-                    t8 *= damp8;    // pre-calculation
-
-                    c6 = c6_ij_tot[idx_linij];
-                    r6 = r2 * r2 * r2;
-                    r7 = r6 * r;
-
-                    /* // d(r ^ (-6)) / d(r_ij) */
-                    x1 = 6.0 * c6 / r7 * (s6 * damp6 * (14.0 * t6 - 1.0) + s8 * r42 / r2 * damp8 * (48.0 * t8 - 4.0));
-
-                    vec[0] = x1 * rij[0] / r;
-                    vec[1] = x1 * rij[1] / r;
-                    vec[2] = x1 * rij[2] / r;
-
-                    f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
-                    f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
-                    f_private[ithread * n * 3 + iat * 3 + 2] -= vec[2];
-                    f_private[ithread * n * 3 + jat * 3    ] += vec[0];
-                    f_private[ithread * n * 3 + jat * 3 + 1] += vec[1];
-                    f_private[ithread * n * 3 + jat * 3 + 2] += vec[2];
-
-                    sigma_local[0][0] += vec[0] * rij[0];
-                    sigma_local[0][1] += vec[0] * rij[1];
-                    sigma_local[0][2] += vec[0] * rij[2];
-                    sigma_local[1][0] += vec[1] * rij[0];
-                    sigma_local[1][1] += vec[1] * rij[1];
-                    sigma_local[1][2] += vec[1] * rij[2];
-                    sigma_local[2][0] += vec[2] * rij[0];
-                    sigma_local[2][1] += vec[2] * rij[1];
-                    sigma_local[2][2] += vec[2] * rij[2];
-
-                    // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
-                    dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 / r2) / r6;
-                    disp_sum -= dc6_rest * c6;
-                    dc6iji = dc6_iji_tot[idx_linij];
-                    dc6ijj = dc6_ijj_tot[idx_linij];
-                    dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
-                    dc6i_private[n * ithread + jat] += dc6_rest * dc6ijj;
-                } // k
-            } // iat != jat
-
-            for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
-                // cutoff radius check
-                idx1 = tau_idx_vdw[k-2];
-                idx2 = tau_idx_vdw[k-1];
-                idx3 = tau_idx_vdw[k];
-                if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
-                rij[0] = tau_vdw[idx1][idx2][idx3][0];
-                rij[1] = tau_vdw[idx1][idx2][idx3][1];
-                rij[2] = tau_vdw[idx1][idx2][idx3][2];
-                r2 = MathExtra::lensq3(rij);
-                // cutoff radius check
-                if (r2 > rthr) { continue; }
-
-                r = sqrt(r2);
-                r0 = r0ab[iz[iat]][iz[iat]];
-
-                // Calculates damping functions
-                tmp_v = (rs6 * r0) / r;
-                tmp_v *= tmp_v * tmp_v * tmp_v * tmp_v * tmp_v * tmp_v; // ^7
-                t6 = tmp_v * tmp_v; // ^14
-                damp6 = 1.0 / (1.0 + 6.0 * t6);
-                tmp_v = (rs8 * r0) / r;
-                tmp_v = tmp_v * tmp_v; // ^2
-                tmp_v = tmp_v * tmp_v; // ^4
-                tmp_v = tmp_v * tmp_v; // ^8
-                t8 = tmp_v * tmp_v; // ^16
-                damp8 = 1.0 / (1.0 + 6.0 * t8);
-
-                idx_linij = iat + (iat + 1) * iat / 2;
-                c6 = c6_ij_tot[idx_linij];
-                r42 = r2r4[iz[iat]] * r2r4[iz[iat]];
-                r6 = r2 * r2 * r2;
-                r7 = r6 * r;
-
-                /* // d(r ^ (-6)) / d(r_ij) */
-                x1 = 0.5 * 6.0 * c6 / r7 * (s6 * damp6 * (alp6 * t6 * damp6 - 1.0) + s8 * r42 / r2 * damp8 * (3.0 * alp8 * t8 * damp8 - 4.0));
-
-                vec[0] = x1 * rij[0] / r;
-                vec[1] = x1 * rij[1] / r;
-                vec[2] = x1 * rij[2] / r;
-
-                sigma_local[0][0] += vec[0] * rij[0];
-                sigma_local[0][1] += vec[0] * rij[1];
-                sigma_local[0][2] += vec[0] * rij[2];
-                sigma_local[1][0] += vec[1] * rij[0];
-                sigma_local[1][1] += vec[1] * rij[1];
-                sigma_local[1][2] += vec[1] * rij[2];
-                sigma_local[2][0] += vec[2] * rij[0];
-                sigma_local[2][1] += vec[2] * rij[1];
-                sigma_local[2][2] += vec[2] * rij[2];
-
-                // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
-                dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 / r2) / r6 * 0.5;
-
-                disp_sum -= dc6_rest * c6;
-                dc6iji = dc6_iji_tot[idx_linij];
-                dc6ijj = dc6_ijj_tot[idx_linij];
-                dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
-                dc6i_private[n * ithread + iat] += dc6_rest * dc6ijj;
-            } // iat == jat
-        } // iat
-
-        disp_private[ithread] = disp_sum;  // calculate E_disp for sanity check
-
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                sigma_private[ithread * 9 + i * 3 + j] = sigma_local[i][j];
-            }
-        }
-    } // pragma omp parallel
-
-    for (int i = 0; i < nthreads; i++) {
-        for (int iat = 0; iat < n; iat++) {
-            dc6i[iat] += dc6i_private[n * i + iat];
-        }
-
-        disp += disp_private[i];
-    }
-
-    disp_total = disp;
-}
-
-
-/* ----------------------------------------------------------------------
-   Get forces
-------------------------------------------------------------------------- */
-
-void PairD3::get_forces() {
-    // After calculating all derivatives dE/dr_ij w.r.t. distances,
-    // the grad w.r.t.the coordinates is calculated dE / dr_ij * dr_ij / dxyz_i
-
-    for (int ii = 0; ii < 3; ii++) {
-        for (int jj = 0; jj < 3; jj++) {
-            sigma[ii][jj] = 0.0;
-        }
-    }
-
-    int n = atom->natoms;
-
-    int nthreads = omp_get_max_threads();
-    #pragma omp parallel
-    {
-        const int ithread = omp_get_thread_num();
-
-        double rcovij;                  // sum of covalent radius
-        double expterm, dcnn;
-        double x1;
-        double vec[3] = { 0.0 };
-        double rij[4] = { 0.0 };            // Displacement vector (to calculate r)
-        double r = 0.0, r2 = 0.0;           // Atomic distance and square of it
-        double sigma_local[3][3] = {{ 0.0 }};
-        int idx1, idx2, idx3;
-
-        #pragma omp for schedule(auto)
-        for (int iat = n - 1; iat >= 0; iat--) {
-            for (int jat = iat - 1; jat >= 0; jat--) {
-                for (int k = tau_idx_cn_total_size - 1; k >= 0 ; k -= 3) {
-                    idx1 = tau_idx_cn[k-2];
-                    idx2 = tau_idx_cn[k-1];
-                    idx3 = tau_idx_cn[k];
-                    rij[0] = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
-                    rij[1] = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
-                    rij[2] = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
-                    r2 = MathExtra::lensq3(rij);
-                    // Assume rthr > cn_thr --> only check for cn_thr
-                    if (r2 >= cn_thr) { continue; }
-                    r = sqrt(r2);
-                    rcovij = rcov[iz[iat]] + rcov[iz[jat]];
-                    expterm = exp(-k1 * (rcovij / r - 1.0));
-                    dcnn = -k1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                    x1 = dcnn * (dc6i[iat] + dc6i[jat]);
-
-                    vec[0] = x1 * rij[0] / r;
-                    vec[1] = x1 * rij[1] / r;
-                    vec[2] = x1 * rij[2] / r;
-
-                    f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
-                    f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
-                    f_private[ithread * n * 3 + iat * 3 + 2] -= vec[2];
-                    f_private[ithread * n * 3 + jat * 3    ] += vec[0];
-                    f_private[ithread * n * 3 + jat * 3 + 1] += vec[1];
-                    f_private[ithread * n * 3 + jat * 3 + 2] += vec[2];
-
-                    sigma_local[0][0] += vec[0] * rij[0];
-                    sigma_local[0][1] += vec[0] * rij[1];
-                    sigma_local[0][2] += vec[0] * rij[2];
-                    sigma_local[1][0] += vec[1] * rij[0];
-                    sigma_local[1][1] += vec[1] * rij[1];
-                    sigma_local[1][2] += vec[1] * rij[2];
-                    sigma_local[2][0] += vec[2] * rij[0];
-                    sigma_local[2][1] += vec[2] * rij[1];
-                    sigma_local[2][2] += vec[2] * rij[2];
-
-                } // k
-            } // iat != jat
-
-            for (int k = tau_idx_cn_total_size - 1; k >= 0 ; k -= 3) {
-                idx1 = tau_idx_cn[k-2];
-                idx2 = tau_idx_cn[k-1];
-                idx3 = tau_idx_cn[k];
-                if (idx1 == rep_cn[0] && idx2 == rep_cn[1] && idx3 == rep_cn[2]) { continue; }
-
-                rij[0] = tau_cn[idx1][idx2][idx3][0];
-                rij[1] = tau_cn[idx1][idx2][idx3][1];
-                rij[2] = tau_cn[idx1][idx2][idx3][2];
-                r2 = MathExtra::lensq3(rij);
-                // Assume rthr > cn_thr --> only check for cn_thr
-                if (r2 >= cn_thr) { continue; }
-                r = sqrt(r2);
-                rcovij = rcov[iz[iat]] + rcov[iz[iat]];
-                expterm = exp(-k1 * (rcovij / r - 1.0));
-                dcnn = -k1 * rcovij * expterm / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                x1 = dcnn * dc6i[iat];
-
-                vec[0] = x1 * rij[0] / r;
-                vec[1] = x1 * rij[1] / r;
-                vec[2] = x1 * rij[2] / r;
-
-                sigma_local[0][0] += vec[0] * rij[0];
-                sigma_local[0][1] += vec[0] * rij[1];
-                sigma_local[0][2] += vec[0] * rij[2];
-                sigma_local[1][0] += vec[1] * rij[0];
-                sigma_local[1][1] += vec[1] * rij[1];
-                sigma_local[1][2] += vec[1] * rij[2];
-                sigma_local[2][0] += vec[2] * rij[0];
-                sigma_local[2][1] += vec[2] * rij[1];
-                sigma_local[2][2] += vec[2] * rij[2];
-            } // k
-        } // iat == jat
-
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                sigma_private[ithread * 9 + i * 3 + j] += sigma_local[i][j];
-            }
-        }
-    } // omp parallel
-
-    for (int rank = 0; rank < nthreads; rank++) {
-        for (int iat = 0; iat < n; iat++) {
-            for (int j = 0; j < 3; j++) {
-                f[iat][j] += f_private[rank * n * 3 + iat * 3 + j];
-            }
-        }
-    }
-
-    for (int rank = 0; rank < nthreads; rank++) {
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                sigma[i][j] += sigma_private[rank * 9 + i * 3 + j];
-            }
-        }
-    }
-}
-
-/* ----------------------------------------------------------------------
-   Update energy, force, and stress
-------------------------------------------------------------------------- */
-
-void PairD3::update(int eflag, int vflag) {
-    int n = atom->natoms;
-    // Energy update
-    if (eflag) { eng_vdwl += disp_total * au_to_ev; }
-
-    double** f_local = atom->f;       // Local force of atoms
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < 3; j++) {
-            f_local[i][j] += f[i][j] * au_to_ev / au_to_ang;
-        }
-    }
-
-    // Stress update
-    if (vflag) {
-        virial[0] += sigma[0][0] * au_to_ev;
-        virial[1] += sigma[1][1] * au_to_ev;
-        virial[2] += sigma[2][2] * au_to_ev;
-        virial[3] += sigma[0][1] * au_to_ev;
-        virial[4] += sigma[0][2] * au_to_ev;
-        virial[5] += sigma[1][2] * au_to_ev;
-    }
-}
-
-void PairD3::allocate_for_omp() {
-
-    int natoms = atom->natoms;
-    int nthreads = omp_get_max_threads();
-    dc6i_private = memory->create(dc6i_private, nthreads * natoms, "pair:dc6i_private");
-    disp_private = memory->create(disp_private, nthreads, "pair:disp_private");
-    f_private = memory->create(f_private, nthreads * natoms * 3, "pair:f_private");
-    sigma_private = memory->create(sigma_private, nthreads * 3 * 3, "pair:sigma_private");
-    cn_private = memory->create(cn_private, nthreads * natoms, "pair:cn_private");
-
-}
-
-void PairD3::initialize_for_omp() {
-
-    int natoms = atom->natoms;
-    int nthreads = omp_get_max_threads();
-    for (int i = 0; i < natoms * nthreads; i++) { dc6i_private[i] = 0.0; }
-    for (int i = 0; i < nthreads; i++) { disp_private[i] = 0.0; }
-    for (int i = 0; i < 3 * natoms * nthreads; i++) { f_private[i] = 0.0; }
-    for (int i = 0; i < 3 * 3 * nthreads; i++) { sigma_private[i] = 0.0; }
-    for (int i = 0; i < nthreads * natoms; i++) { cn_private[i] = 0.0; }
-
 }
 
 /* ----------------------------------------------------------------------
@@ -1393,30 +729,19 @@ void PairD3::initialize_for_omp() {
 ------------------------------------------------------------------------- */
 
 void PairD3::compute(int eflag, int vflag) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::compute <<<\n");
     if (eflag || vflag) ev_setup(eflag, vflag);
-
-    if (dc6i_private == nullptr) {
-        allocate_for_omp();
-    }
+    else evflag = vflag_fdotr = 0;
 
     int n = atom->natoms;       // Global number of atoms in the cell
-    if (n != n_save) {
+    if (n >= n_save) {
         reallocate_arrays();
     }
-    initialize_for_omp();
 
-    initialize_array();
-    set_lattice_vectors();
-    set_criteria(rthr, rep_vdw);
-    set_criteria(cn_thr, rep_cn);
-    precalculate_tau_array();
     gather_cn();
-    get_dC6_dCNij();
+    neigh_style_force_compute();
+    neigh_style_get_force();
 
-    calculate_force_coefficients();
-    get_forces();
-    update(eflag, vflag);
+    if (vflag_fdotr) virial_fdotr_compute();
 }
 
 /* ----------------------------------------------------------------------
@@ -1424,12 +749,14 @@ void PairD3::compute(int eflag, int vflag) {
 ------------------------------------------------------------------------- */
 
 double PairD3::init_one(int i, int j) {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::init_one <<<\n");
 
     if (setflag[i][j] == 0) error->all(FLERR, "All pair coeffs are not set");
     // No need to count local neighbor in D3
     /* return std::sqrt(rthr * std::pow(au_to_ang, 2)); */
-    return 0.0;
+
+    // give max cutoff, which is rthr not cn_thr
+    return std::sqrt(sq_vdw_ang);
+    //return 0.0;
 }
 
 /* ----------------------------------------------------------------------
@@ -1437,8 +764,33 @@ double PairD3::init_one(int i, int j) {
 ------------------------------------------------------------------------- */
 
 void PairD3::init_style() {
-    if (lmp->logfile) fprintf(lmp->logfile, "\t\t>>> PairD3::init_style <<<\n");
-    neighbor->add_request(this, NeighConst::REQ_FULL);
+    NeighRequest* cn_full_req = neighbor->add_request(this, NeighConst::REQ_FULL);
+    cn_full_req->set_cutoff(std::sqrt(sq_cn_ang));
+    cn_full_req->set_id(NEIGH_CN_FULL_ID);
+
+    NeighRequest* cn_half_req = neighbor->add_request(this, NeighConst::REQ_DEFAULT);
+    cn_half_req->set_cutoff(std::sqrt(sq_cn_ang));
+    cn_half_req->set_id(NEIGH_CN_HALF_ID);
+
+    NeighRequest* vdw_half_req = neighbor->add_request(this, NeighConst::REQ_DEFAULT);
+    vdw_half_req->set_cutoff(std::sqrt(sq_vdw_ang));
+    vdw_half_req->set_id(NEIGH_VDW_HALF_ID);
+}
+
+void PairD3::init_list(int which, NeighList* ptr) {
+    switch (which) {
+        case NEIGH_CN_FULL_ID:
+            cn_full = ptr;
+            break;
+        case NEIGH_CN_HALF_ID:
+            cn_half = ptr;
+            break;
+        case NEIGH_VDW_HALF_ID:
+            vdw_half = ptr;
+            break;
+        default:
+            error->all(FLERR, "Invalid neighbor list id");
+    }
 }
 
 /* ----------------------------------------------------------------------

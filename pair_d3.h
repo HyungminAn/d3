@@ -37,13 +37,14 @@ PairStyle(d3, PairD3)
 #include "potential_file_reader.h"
 #include "neighbor.h"
 #include "neigh_list.h"
+#include "neigh_request.h"
 #include "domain.h"
 #include "math_extra.h"
-
 
 namespace LAMMPS_NS {
 
     class PairD3 : public Pair {
+        friend class NeighRequest;
     public:
         // Constructor
         PairD3(class LAMMPS*);
@@ -60,6 +61,7 @@ namespace LAMMPS_NS {
         void read_restart(FILE*) override;
         void write_restart_settings(FILE*) override;
         void read_restart_settings(FILE*) override;
+        void init_list(int, class NeighList *) override;
 
     protected:
         virtual void allocate();
@@ -74,64 +76,24 @@ namespace LAMMPS_NS {
         /* ------- Read parameters ------- */
 
 
-        /* ------- Lattice information ------- */
-        double get_rep_cell(double*, double*, double);
-        void set_criteria(double, int*);
-        void inv_cell(double**, double**);
-        void set_lattice_vectors();
-        /* ------- Lattice information ------- */
-
-
-        /* ------- OpenMP paralleization ------- */
-        void initialize_for_omp();
-        void allocate_for_omp();
-        /* ------- OpenMP paralleization ------- */
-
-
-        /* ------- Initialize & Precalculate ------- */
+        /* ------- Initialize ------- */
         void initialize_array();
-        void shift_atom_coord(double*, double*);
-        void get_tau(double, double, double, double*);
-        void precalculate_tau_array();
-        /* ------- Initialize & Precalculate ------- */
-
-
-        /* ------- Reallocate (when number of atoms changed) ------- */
         void reallocate_arrays();
-        /* ------- Reallocate (when number of atoms changed) ------- */
+        /* ------- Initialize ------- */
 
-
-        /* ------- Coordination number ------- */
         void gather_cn();
-        void get_dC6_dCNij();
-        /* ------- Coordination number ------- */
-
-
-        /* ------- Calculate atomic distance ------- */
-        double get_distance_with_tau(double*, int, int);
-        /* ------- Calculate atomic distance ------- */
-
-
-        /* ------- Main workers ------- */
-        void calculate_force_coefficients();
-        void get_forces();
-        void update(int, int);
-        /* ------- Main workers ------- */
-
+        void neigh_style_force_compute();
+        void neigh_style_get_force();
 
         /*--------- Constants ---------*/
-        int maxat;              // maximum number of total atoms
-        int max_elem;           // maximum of the element number
-        int maxc;               // maximum coordination number references per element
-
-        double au_to_ang;       // conversion factors (atomic unit --> angstrom)
-        double au_to_kcal;      // conversion factors (atomic unit --> kcal)
-        double au_to_ev;        // conversion factors (atomic unit --> eV)
-        double c6conv;          //  J/mol nm^6 - > au
-
-        double k1;              // global ad hoc parameters
-        double k2;              // global ad hoc parameters
-        double k3;              // global ad hoc parameters
+        static const int maxc = 5;
+        static constexpr double au_to_ang = 0.52917726;
+        static constexpr double ang_to_au = 1 / 0.52917726;
+        static constexpr double au_to_ev = 27.21138505;
+        static constexpr double ev_to_au = 1 / 27.21138505;
+        static constexpr double k1 = 16.0;
+        static constexpr double k2 = 4.0 / 3.0;
+        static constexpr double k3 = -4.0;
         /*--------- Constants ---------*/
 
 
@@ -144,65 +106,28 @@ namespace LAMMPS_NS {
         double s6, s18, rs6, rs8, rs18, alp, alp6, alp8;  // parameters for D3
         double rthr;              // R^2 distance to cutoff for C calculation
         double cn_thr;            // R^2 distance to cutoff for CN_calculation
+        double sq_vdw_ang;        // square of the vdw radius in angstrom
+        double sq_cn_ang;         // square of the CN cutoff in angstrom
         /*--------- Parameters to read ---------*/
-
-
-        /*--------- Lattice related values ---------*/
-        double** lat;                       // For conversion of coordination
-        double** lat_inv = nullptr;         // For conversion of coordination
-        double* lat_v_1 = nullptr;          // lattice coordination vector
-        double* lat_v_2 = nullptr;          // lattice coordination vector
-        double* lat_v_3 = nullptr;          // lattice coordination vector
-        double* lat_cp_12 = nullptr;        // Cross product of lat_v_1, lat_v_2
-        double* lat_cp_23 = nullptr;        // Cross product of lat_v_2, lat_v_3
-        double* lat_cp_31 = nullptr;        // Cross product of lat_v_3, lat_v_1
-        int* rep_vdw = nullptr;             // repetition of cell for calculating D3
-        int* rep_cn = nullptr;              // repetition of cell for calculating
-                                            // coordination number
-        double** sigma = nullptr;           // virial pressure on cell
-        /*--------- Lattice related values ---------*/
 
 
         /*--------- Per-atom values/arrays ---------*/
         double* cn = nullptr;               // Coordination numbers
-        double** x = nullptr;               // Positions
-        double** f = nullptr;               // Forces
-        int* iz = nullptr;                  // Atom types
         double* dc6i = nullptr;             // dC6i(iat) saves dE_dsp/dCN(iat)
         /*--------- Per-atom values/arrays ---------*/
 
 
-        /*--------- Per-pair values/arrays ---------*/
-        double* c6_ij_tot = nullptr;
-        double* dc6_iji_tot = nullptr;
-        double* dc6_ijj_tot = nullptr;
-        /*--------- Per-pair values/arrays ---------*/
-
-
         /*---------- Global values ---------*/
         int n_save;                         // to check whether the number of atoms has changed
-        double disp_total;                  // Dispersion energy
         /*---------- Global values ---------*/
 
-
-        /*--------- For loop over tau (translation of cell) ---------*/
-        double**** tau_vdw = nullptr;
-        double**** tau_cn = nullptr;
-        int* tau_idx_vdw = nullptr;
-        int* tau_idx_cn = nullptr;
-        int tau_idx_vdw_total_size;
-        int tau_idx_cn_total_size;
-        /*--------- For loop over tau (translation of cell) ---------*/
-
-
-        /* ------------ For OpenMP running ------------ */
-        double* dc6i_private = nullptr;     // save dc6i  of each OMP threads
-        double* disp_private = nullptr;     // save disp  of each OMP threads
-        double* f_private = nullptr;        // save f     of each OMP threads
-        double* sigma_private = nullptr;    // save sigma of each OMP threads
-        double* cn_private = nullptr;       // save cn    of each OMP threads
-        /* ------------ For OpenMP running ------------ */
-
+        // neighbor lists
+        static const int NEIGH_CN_FULL_ID = 0;
+        static const int NEIGH_CN_HALF_ID = 1;
+        static const int NEIGH_VDW_HALF_ID = 2;
+        class NeighList *cn_full;
+        class NeighList *cn_half;
+        class NeighList *vdw_half;
     };
 }    // namespace LAMMPS_NS
 

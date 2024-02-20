@@ -1,0 +1,21 @@
+units           metal     # K, bar, ps, A
+box             tilt large
+newton on
+
+read_data coo
+
+variable        path_r0ab  string  "r0ab.csv"
+variable        path_c6ab  string  "d3_pars.csv"
+variable        cutoff_d3       equal   4500
+variable        cutoff_d3_CN    equal   1600
+
+pair_style      d3    ${cutoff_d3}  ${cutoff_d3_CN}
+pair_coeff * *  ${path_r0ab} ${path_c6ab} pbe O C H
+
+neigh_modify page 1000000 one 10000
+
+thermo 1
+
+dump my all custom 1 dump.traj id element type x y z fx fy fz 
+
+run 100
