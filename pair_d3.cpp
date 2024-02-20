@@ -11,10 +11,7 @@
    See the README file in the top-level LAMMPS directory.
 ------------------------------------------------------------------------- */
 
-/* ----------------------------------------------------------------------
-   Contributing author: Hyungmin An (andynn@snu.ac.kr)
-------------------------------------------------------------------------- */
-
+// Contributing author: Axel Kohlmeyer, Temple University, akohlmey@gmail.com
 
 #include "pair_d3.h"
 #include "neighbor.h"
@@ -26,6 +23,7 @@ using namespace LAMMPS_NS;
 ------------------------------------------------------------------------- */
 
 PairD3::PairD3(LAMMPS* lmp) : Pair(lmp) {
+
     single_enable = 0;      // potential is not pair-wise additive.
     restartinfo = 0;        // Many-body potentials are usually not
                             // written to binary restart files.
@@ -90,11 +88,11 @@ void PairD3::allocate() {
         }
     }
 
-    for (int idx1 = 0; idx1 < np1;  idx1++) {
-        for (int idx2 = 0; idx2 < np1;  idx2++) {
-            for (int idx3 = 0; idx3 < MAXC; idx3++) {
-                for (int idx4 = 0; idx4 < MAXC; idx4++) {
-                    for (int idx5 = 0; idx5 < 3;    idx5++) {
+    for (int idx1 = 0; idx1 < np1; idx1++) {
+        for (int idx2 = 0; idx2 < np1; idx2++) {
+            for (int idx3 = 0; idx3 < maxc; idx3++) {
+                for (int idx4 = 0; idx4 < maxc; idx4++) {
+                    for (int idx5 = 0; idx5 < 3; idx5++) {
                         c6ab[idx1][idx2][idx3][idx4][idx5] = -1;
                     }
                 }
@@ -140,6 +138,7 @@ void PairD3::settings(int narg, char **arg) {
 ------------------------------------------------------------------------- */
 
 int PairD3::find_atomic_number(std::string& key) {
+
     std::transform(key.begin(), key.end(), key.begin(), ::tolower);
     if (key.length() == 1) { key += " "; }
     key.resize(2);
@@ -158,9 +157,10 @@ int PairD3::find_atomic_number(std::string& key) {
         "fr","ra","ac","th","pa","u ","np","pu"
     };
 
+    int atomic_number;
     for (size_t i = 0; i < element_table.size(); ++i) {
         if (element_table[i] == key) {
-            int atomic_number = i + 1;
+            atomic_number = i + 1;
             return atomic_number;
         }
     }
@@ -175,7 +175,9 @@ int PairD3::find_atomic_number(std::string& key) {
 
 int PairD3::is_int_in_array(int arr[], int size, int value) {
     for (int i = 0; i < size; i++) {
-        if (arr[i] == value) { return i; } // returns the index
+        if (arr[i] == value) {
+            return i;
+        } // returns the index
     }
     return -1;
 }
@@ -186,24 +188,26 @@ int PairD3::is_int_in_array(int arr[], int size, int value) {
 
 void PairD3::read_r0ab(LAMMPS* lmp, char* path_r0ab, int* atomic_numbers, int ntypes) {
 
+    int idx_atom_1 = -1, idx_atom_2 = -1;
+    double value = 0;
+    char* line;
     int nparams_per_line = 94;
     int row_idx = 1;
-    char* line;
 
     PotentialFileReader r0ab_reader(lmp, path_r0ab, "d3");
 
     while ((line = r0ab_reader.next_line(nparams_per_line))) {
-        const int idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, row_idx);
+        idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, row_idx);
         // Skip for the other rows
         if (idx_atom_1 < 0) { row_idx++; continue; }
         try {
             ValueTokenizer r0ab_values(line);
 
             for (int col_idx=1; col_idx <= nparams_per_line; col_idx++) {
-                const double value = r0ab_values.next_double();
-                const int idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, col_idx);
+                value = r0ab_values.next_double();
+                idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, col_idx);
                 if (idx_atom_2 < 0) { continue; }
-                r0ab[idx_atom_1+1][idx_atom_2+1] = value / AU_TO_ANG;
+                r0ab[idx_atom_1+1][idx_atom_2+1] = value / au_to_ang;
             } // loop over column
 
             row_idx++;
@@ -241,7 +245,9 @@ void PairD3::read_c6ab(LAMMPS* lmp, char* path_c6ab, int* atomic_numbers, int nt
 
     for (int i = 1; i <= ntypes; i++) { mxc[i] = 0; }
 
-    int grid_i = 0, grid_j = 0;
+    int atom_number_1 = 0, atom_number_2 = 0, grid_i = 0, grid_j = 0;
+    int idx_atom_1 = -1, idx_atom_2 = -1;
+    double ref_c6 = 0, ref_cn1 = 0, ref_cn2 = 0;
     char* line;
     int nparams_per_line = 5;
 
@@ -250,16 +256,16 @@ void PairD3::read_c6ab(LAMMPS* lmp, char* path_c6ab, int* atomic_numbers, int nt
     while ((line = c6ab_reader.next_line(nparams_per_line))) {
         try {
             ValueTokenizer c6ab_values(line);
-            const double ref_c6 = c6ab_values.next_double();
-            int atom_number_1 = static_cast<int>(c6ab_values.next_double());
-            int atom_number_2 = static_cast<int>(c6ab_values.next_double());
+            ref_c6 = c6ab_values.next_double();
+            atom_number_1 = static_cast<int>(c6ab_values.next_double());
+            atom_number_2 = static_cast<int>(c6ab_values.next_double());
             get_limit_in_pars_array(atom_number_1, atom_number_2, grid_i, grid_j);
-            const int idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, atom_number_1);
+            idx_atom_1 = is_int_in_array(atomic_numbers, ntypes, atom_number_1);
             if ( idx_atom_1 < 0 ) { continue; }
-            const int idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, atom_number_2);
+            idx_atom_2 = is_int_in_array(atomic_numbers, ntypes, atom_number_2);
             if ( idx_atom_2 < 0 ) { continue; }
-            const double ref_cn1 = c6ab_values.next_double();
-            const double ref_cn2 = c6ab_values.next_double();
+            ref_cn1 = c6ab_values.next_double();
+            ref_cn2 = c6ab_values.next_double();
 
             mxc[idx_atom_1 + 1] = std::max(mxc[idx_atom_1 + 1], grid_i);
             mxc[idx_atom_2 + 1] = std::max(mxc[idx_atom_2 + 1], grid_j);
@@ -290,16 +296,14 @@ void PairD3::setfuncpar(char* functional_name) {
 
     // default def2-QZVP (almost basis set limit)
     std::unordered_map<std::string, int> commandMap = {
-    { "slater-dirac-exchange", 1}, { "b-lyp", 2 },    { "b-p", 3 },       { "b97-d", 4 },      { "revpbe", 5 },
-    { "pbe", 6 },                  { "pbesol", 7 },   { "rpw86-pbe", 8 }, { "rpbe", 9 },       { "tpss", 10 },
-    { "b3-lyp", 11 },              { "pbe0", 12 },    { "hse06", 13 },    { "revpbe38", 14 },  { "pw6b95", 15 },
-    { "tpss0", 16 },               { "b2-plyp", 17 }, { "pwpb95", 18 },   { "b2gp-plyp", 19 }, { "ptpss", 20 },
-    { "hf", 21 },                  { "mpwlyp", 22 },  { "bpbe", 23 },     { "bh-lyp", 24 },    { "tpssh", 25 },
-    { "pwb6k", 26 },               { "b1b95", 27 },   { "bop", 28 },      { "o-lyp", 29 },     { "o-pbe", 30 },
-    { "ssb", 31 },                 { "revssb", 32 },  { "otpss", 33 },    { "b3pw91", 34 },    { "revpbe0", 35 },
-    { "pbe38", 36 },               { "mpw1b95", 37 }, { "mpwb1k", 38 },   { "bmk", 39 },       { "cam-b3lyp", 40 },
-    { "lc-wpbe", 41 },             { "m05", 42 },     { "m052x", 43 },    { "m06l", 44 },      { "m06", 45 },
-    { "m062x", 46 },               { "m06hf", 47 },   { "hcth120", 48 }
+    {"slater-dirac-exchange", 1}, { "b-lyp", 2 }, { "b-p", 3 }, { "b97-d", 4 }, { "revpbe", 5 },
+    { "pbe", 6 }, { "pbesol", 7 }, { "rpw86-pbe", 8 }, { "rpbe", 9 }, { "tpss", 10 }, { "b3-lyp", 11 },
+    { "pbe0", 12 }, { "hse06", 13 }, { "revpbe38", 14 }, { "pw6b95", 15 }, { "tpss0", 16 }, { "b2-plyp", 17 },
+    { "pwpb95", 18 }, { "b2gp-plyp", 19 }, { "ptpss", 20 }, { "hf", 21 }, { "mpwlyp", 22 }, { "bpbe", 23 },
+    { "bh-lyp", 24 }, { "tpssh", 25 }, { "pwb6k", 26 }, { "b1b95", 27 }, { "bop", 28 }, { "o-lyp", 29 },
+    { "o-pbe", 30 }, { "ssb", 31 }, { "revssb", 32 }, { "otpss", 33 }, { "b3pw91", 34 }, { "revpbe0", 35 },
+    { "pbe38", 36 }, { "mpw1b95", 37 }, { "mpwb1k", 38 }, { "bmk", 39 }, { "cam-b3lyp", 40 }, { "lc-wpbe", 41 },
+    { "m05", 42 }, { "m052x", 43 }, { "m06l", 44 }, { "m06", 45 }, { "m062x", 46 }, { "m06hf", 47 }, { "hcth120", 48 }
     };
 
     int commandCode = commandMap[functional_name];
@@ -371,7 +375,9 @@ void PairD3::setfuncpar(char* functional_name) {
 
 void PairD3::coeff(int narg, char **arg) {
     if (!allocated) allocate();
-    if (narg < 3) { error->all(FLERR, "Pair_coeff * * needs: r0ab.csv c6ab.csv functional element1 element2 ..."); }
+    if (narg < 3) {
+        error->all(FLERR, "Pair_coeff * * needs: r0ab.csv c6ab.csv functional element1 element2 ...");
+    }
 
     std::string element;
     int ntypes = atom->ntypes;
@@ -743,6 +749,7 @@ void PairD3::compute(int eflag, int vflag) {
 ------------------------------------------------------------------------- */
 
 double PairD3::init_one(int i, int j) {
+
     if (setflag[i][j] == 0) error->all(FLERR, "All pair coeffs are not set");
     // No need to count local neighbor in D3
     /* return std::sqrt(rthr * std::pow(au_to_ang, 2)); */
