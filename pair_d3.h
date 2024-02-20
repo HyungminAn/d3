@@ -76,6 +76,7 @@ namespace LAMMPS_NS {
         /* ------- Read parameters ------- */
 
 
+
         /* ------- Initialize ------- */
         void initialize_array();
         void reallocate_arrays();
