@@ -105,6 +105,7 @@ namespace LAMMPS_NS {
 
         /* ------- Main workers ------- */
         void get_forces_without_dC6_zero_damping();
+        void get_forces_without_dC6_zero_damping_modified();
         void get_forces_without_dC6_bj_damping();
         void get_forces_with_dC6();
         void update(int, int);

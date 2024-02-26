@@ -1299,6 +1299,197 @@ void PairD3::get_forces_without_dC6_zero_damping() {
 }
 
 /* ----------------------------------------------------------------------
+   Get forces (Zero damping)
+------------------------------------------------------------------------- */
+
+void PairD3::get_forces_without_dC6_zero_damping_modified() {
+    int n = atom->natoms;
+
+    for (int dim = 0; dim < n; dim++) { dc6i[dim] = 0.0; }
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < 3; j++) {
+            f[i][j] = 0.0;
+        }
+    }
+
+    double disp = 0.0;                  // stores energy (sanity check)
+    int nthreads = omp_get_max_threads();
+
+    #pragma omp parallel
+    {
+        const int ithread = omp_get_thread_num();
+
+        double s8 = s18;                    // D3 parameter for 8th-power term (just use s8 from beginning?)
+        double sigma_local[3][3] = {{ 0.0 }};
+        double disp_sum;
+        const double r2_rthr = rthr;
+
+        #pragma omp for schedule(auto)
+        for (int iat =   n - 1; iat >= 0; iat--) {
+            // iat != jat
+            for (int jat = iat - 1; jat >= 0; jat--) {
+                for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
+                    // cutoff radius check
+                    const int idx1 = tau_idx_vdw[k-2];
+                    const int idx2 = tau_idx_vdw[k-1];
+                    const int idx3 = tau_idx_vdw[k];
+                    const double rij[3] = {
+                        x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0],
+                        x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1],
+                        x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
+                    };
+                    const double r2 = MathExtra::lensq3(rij);
+                    if (r2 > r2_rthr) { continue; }
+
+                    const double r2_inv = 1.0 / r2;
+                    const double r = sqrt(r2);
+                    const double r6 = std::pow(r, 6);
+                    const double r7 = std::pow(r, 7);
+                    const double r9 = std::pow(r, 9);
+
+                    // Calculates damping functions
+                    // alp6 = 14.0, alp8 = 16.0
+                    const double r0 = r0ab[(atom->type)[iat]][(atom->type)[jat]];
+                    const double t6 = std::pow(r/(rs6 * r0) + r0 * rs8, -alp6);
+                    const double damp6 = 1.0 / (1.0 + 6.0 * t6);
+                    const double t8 = std::pow(r / r0 + r0 * rs8, -alp8);
+                    const double damp8 = 1.0 / (1.0 + 6.0 * t8);
+
+                    const int idx_linij = jat + (iat + 1) * iat / 2;
+                    const double c6 = c6_ij_tot[idx_linij];
+                    const double r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[jat]];
+                    /* // d(r ^ (-6)) / d(r_ij) */
+                    const double tmp1 = s6 * 6.0 * damp6 * c6 / r7;
+                    const double tmp2 = 4.0 * s8 * 6.0 * c6 * r42 * damp8 / r9;
+                    const double x1 =
+                        - (tmp1 + 4.0 * tmp2)
+                        + (tmp1 * alp6 * t6 * damp6 * r / (r + rs6 * r0 * r0 * rs8)
+                           + 3.0 * tmp2 * alp8 * t8 * damp8 * r / (r + r0 * r0 * rs8));
+
+                    const double vec[3] = {
+                        x1 * rij[0] / r,
+                        x1 * rij[1] / r,
+                        x1 * rij[2] / r
+                    };
+
+                    f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
+                    f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
+                    f_private[ithread * n * 3 + iat * 3 + 2] -= vec[2];
+                    f_private[ithread * n * 3 + jat * 3    ] += vec[0];
+                    f_private[ithread * n * 3 + jat * 3 + 1] += vec[1];
+                    f_private[ithread * n * 3 + jat * 3 + 2] += vec[2];
+
+                    sigma_local[0][0] += vec[0] * rij[0];
+                    sigma_local[0][1] += vec[0] * rij[1];
+                    sigma_local[0][2] += vec[0] * rij[2];
+                    sigma_local[1][0] += vec[1] * rij[0];
+                    sigma_local[1][1] += vec[1] * rij[1];
+                    sigma_local[1][2] += vec[1] * rij[2];
+                    sigma_local[2][0] += vec[2] * rij[0];
+                    sigma_local[2][1] += vec[2] * rij[1];
+                    sigma_local[2][2] += vec[2] * rij[2];
+
+                    // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
+                    const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) / r6;
+                    disp_sum -= dc6_rest * c6;
+                    const double dc6iji = dc6_iji_tot[idx_linij];
+                    const double dc6ijj = dc6_ijj_tot[idx_linij];
+                    dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
+                    dc6i_private[n * ithread + jat] += dc6_rest * dc6ijj;
+                } // k
+            } // iat != jat
+
+            // iat == jat
+            for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
+                // cutoff radius check
+                const int idx1 = tau_idx_vdw[k-2];
+                const int idx2 = tau_idx_vdw[k-1];
+                const int idx3 = tau_idx_vdw[k];
+                if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
+                const double rij[3] = {
+                    tau_vdw[idx1][idx2][idx3][0],
+                    tau_vdw[idx1][idx2][idx3][1],
+                    tau_vdw[idx1][idx2][idx3][2]
+                };
+                const double r2 = MathExtra::lensq3(rij);
+                // cutoff radius check
+                if (r2 > rthr) { continue; }
+
+                const double r2_inv = 1.0 / r2;
+                const double r = sqrt(r2);
+                const double r6 = std::pow(r, 6);
+                const double r7 = std::pow(r, 7);
+                const double r9 = std::pow(r, 9);
+
+                // Calculates damping functions
+                // alp6 = 14.0, alp8 = 16.0
+                const double r0 = r0ab[(atom->type)[iat]][(atom->type)[iat]];
+                int idx_linij = iat + (iat + 1) * iat / 2;
+                const double t6 = std::pow(r/(rs6 * r0) + r0 * rs8, -alp6);
+                const double damp6 = 1.0 / (1.0 + 6.0 * t6);
+                const double t8 = std::pow(r / r0 + r0 * rs8, -alp8);
+                const double damp8 = 1.0 / (1.0 + 6.0 * t8);
+
+                const double c6 = c6_ij_tot[idx_linij];
+                const double r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[iat]];
+                /* // d(r ^ (-6)) / d(r_ij) */
+                const double tmp1 = s6 * 6.0 * damp6 * c6 / r7;
+                const double tmp2 = 4.0 * s8 * 6.0 * c6 * r42 * damp8 / r9;
+                const double x1 =
+                    (- (tmp1 + 4.0 * tmp2)
+                    + (tmp1 * alp6 * t6 * damp6 * r / (r + rs6 * r0 * r0 * rs8)
+                       + 3.0 * tmp2 * alp8 * t8 * damp8 * r / (r + r0 * r0 * rs8))) * 0.5;
+
+                const double vec[3] = {
+                    x1 * rij[0] / r,
+                    x1 * rij[1] / r,
+                    x1 * rij[2] / r
+                };
+
+                sigma_local[0][0] += vec[0] * rij[0];
+                sigma_local[0][1] += vec[0] * rij[1];
+                sigma_local[0][2] += vec[0] * rij[2];
+                sigma_local[1][0] += vec[1] * rij[0];
+                sigma_local[1][1] += vec[1] * rij[1];
+                sigma_local[1][2] += vec[1] * rij[2];
+                sigma_local[2][0] += vec[2] * rij[0];
+                sigma_local[2][1] += vec[2] * rij[1];
+                sigma_local[2][2] += vec[2] * rij[2];
+
+                // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
+                const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) / r6 * 0.5;
+
+                disp_sum -= dc6_rest * c6;
+                const double dc6iji = dc6_iji_tot[idx_linij];
+                const double dc6ijj = dc6_ijj_tot[idx_linij];
+                dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
+                dc6i_private[n * ithread + iat] += dc6_rest * dc6ijj;
+            } // iat == jat
+        } // iat
+
+        disp_private[ithread] = disp_sum;  // calculate E_disp for sanity check
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                sigma_private[ithread * 9 + i * 3 + j] = sigma_local[i][j];
+            }
+        }
+
+    } // pragma omp parallel
+
+    for (int i = 0; i < nthreads; i++) {
+        for (int iat = 0; iat < n; iat++) {
+            dc6i[iat] += dc6i_private[n * i + iat];
+        }
+
+        disp += disp_private[i];
+    }
+
+    disp_total = disp;
+}
+
+/* ----------------------------------------------------------------------
    Get forces (BJ damping)
 ------------------------------------------------------------------------- */
 
@@ -1370,12 +1561,6 @@ void PairD3::get_forces_without_dC6_bj_damping() {
                         x1 * rij[2] / r
                     };
 
-                    if (iat == 1 && jat == 0) {
-                        printf("iat %d jat %d r2 %lf r %lf x1 %.10e\n", iat, jat, r2, r, x1);
-                        printf("\trij %.10e %.10e %.10e\n", rij[0], rij[1], rij[2]);
-                        printf("\tvec %.10e %.10e %.10e\n", vec[0], vec[1], vec[2]);
-                    }
-
                     f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
                     f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
                     f_private[ithread * n * 3 + iat * 3 + 2] -= vec[2];
@@ -1440,9 +1625,9 @@ void PairD3::get_forces_without_dC6_bj_damping() {
                            - s8 * c6 * 24.0 * r42 * r7 / (t8 * t8));
 
                 const double vec[3] = {
-                    x1 * rij[0],
-                    x1 * rij[1],
-                    x1 * rij[2]
+                    x1 * rij[0] / r,
+                    x1 * rij[1] / r,
+                    x1 * rij[2] / r
                 };
 
                 sigma_local[0][0] += vec[0] * rij[0];
@@ -1690,9 +1875,13 @@ void PairD3::compute(int eflag, int vflag) {
     int zero_damping = 1;
     int zero_damping_modified = 3;
 
-    if (damping_type == zero_damping || damping_type == zero_damping_modified) {
+    if (damping_type == zero_damping) {
         get_forces_without_dC6_zero_damping();
-    } else {
+    }
+    else if (damping_type == zero_damping_modified){
+        get_forces_without_dC6_zero_damping_modified();
+    }
+    else {
         get_forces_without_dC6_bj_damping();
     }
     get_forces_with_dC6();
