@@ -157,13 +157,39 @@ void PairD3::allocate() {
 
 /* ----------------------------------------------------------------------
    Settings: read from pair_style (Required)
-             pair_style   d3  rthr cn_thr
+             pair_style   d3 rthr cn_thr damping_type
 ------------------------------------------------------------------------- */
 
 void PairD3::settings(int narg, char **arg) {
-    if (narg != 2) { error->all(FLERR, "Pair_style d3 needs two arguments: rthr, cn_thr"); }
+    if (narg != 3) {
+        error->all(FLERR,
+                "Pair_style d3 needs Three arguments:\n"
+                "\t rthr : threshold for dispersion interaction\n"
+                "\t cn_thr : threshold for coordination number calculation\n"
+                "\t damping_type : type of damping function\n"
+                );
+    }
     rthr   = utils::numeric(FLERR, arg[0], false, lmp);
     cn_thr = utils::numeric(FLERR, arg[1], false, lmp);
+
+    std::unordered_map<std::string, int> commandMap = {
+        { "zero", 1}, { "bj", 2 }, { "zerom", 3 }, { "bjm", 4 },
+    };
+
+    int commandCode = commandMap[arg[2]];
+    switch (commandCode) {
+    case 1: damping_type = 1; break;
+    case 2: damping_type = 2; break;
+    case 3: damping_type = 3; break;
+    case 4: damping_type = 4; break;
+    default:
+        error->all(FLERR,
+                "Unknown damping type\n"
+                "\tPossible damping types are:\n"
+                "\t\t'zero', 'bj', 'zerom', 'bjm'\n"
+                );
+        break;
+    }
 }
 
 
@@ -315,79 +341,219 @@ void PairD3::read_c6ab(LAMMPS* lmp, char* path_c6ab, int* atomic_numbers, int nt
 
 void PairD3::setfuncpar(char* functional_name) {
     // set parameters for the given functionals
-    // DFT-D3
-    s6 = 1.0;
-    alp = 14.0;
-    rs18 = 1.0;
+    int zero_damping = 1;
+    int bj_damping = 2;
+    int zero_damping_modified = 3;
+    int bj_damping_modified = 4;
 
-    // default def2-QZVP (almost basis set limit)
-    std::unordered_map<std::string, int> commandMap = {
-    { "slater-dirac-exchange", 1}, { "b-lyp", 2 },    { "b-p", 3 },       { "b97-d", 4 },      { "revpbe", 5 },
-    { "pbe", 6 },                  { "pbesol", 7 },   { "rpw86-pbe", 8 }, { "rpbe", 9 },       { "tpss", 10 },
-    { "b3-lyp", 11 },              { "pbe0", 12 },    { "hse06", 13 },    { "revpbe38", 14 },  { "pw6b95", 15 },
-    { "tpss0", 16 },               { "b2-plyp", 17 }, { "pwpb95", 18 },   { "b2gp-plyp", 19 }, { "ptpss", 20 },
-    { "hf", 21 },                  { "mpwlyp", 22 },  { "bpbe", 23 },     { "bh-lyp", 24 },    { "tpssh", 25 },
-    { "pwb6k", 26 },               { "b1b95", 27 },   { "bop", 28 },      { "o-lyp", 29 },     { "o-pbe", 30 },
-    { "ssb", 31 },                 { "revssb", 32 },  { "otpss", 33 },    { "b3pw91", 34 },    { "revpbe0", 35 },
-    { "pbe38", 36 },               { "mpw1b95", 37 }, { "mpwb1k", 38 },   { "bmk", 39 },       { "cam-b3lyp", 40 },
-    { "lc-wpbe", 41 },             { "m05", 42 },     { "m052x", 43 },    { "m06l", 44 },      { "m06", 45 },
-    { "m062x", 46 },               { "m06hf", 47 },   { "hcth120", 48 }
-    };
+    if (damping_type == zero_damping) {
+        s6 = 1.0;
+        alp = 14.0;
+        rs18 = 1.0;
 
-    int commandCode = commandMap[functional_name];
-    switch (commandCode) {
-    case 1: rs6 = 0.999; s18 = -1.957; rs18 = 0.697; break;
-    case 2: rs6 = 1.094; s18 = 1.682; break;
-    case 3: rs6 = 1.139; s18 = 1.683; break;
-    case 4: rs6 = 0.892; s18 = 0.909; break;
-    case 5: rs6 = 0.923; s18 = 1.010; break;
-    case 6: rs6 = 1.217; s18 = 0.722; break;
-    case 7: rs6 = 1.345; s18 = 0.612; break;
-    case 8: rs6 = 1.224; s18 = 0.901; break;
-    case 9: rs6 = 0.872; s18 = 0.514; break;
-    case 10: rs6 = 1.166; s18 = 1.105; break;
-    case 11: rs6 = 1.261; s18 = 1.703; break;
-    case 12: rs6 = 1.287; s18 = 0.928; break;
-    case 13: rs6 = 1.129; s18 = 0.109; break;
-    case 14: rs6 = 1.021; s18 = 0.862; break;
-    case 15: rs6 = 1.532; s18 = 0.862; break;
-    case 16: rs6 = 1.252; s18 = 1.242; break;
-    case 17: rs6 = 1.427; s18 = 1.022; s6 = 0.64; break;
-    case 18: rs6 = 1.557; s18 = 0.705; s6 = 0.82; break;
-    case 19: rs6 = 1.586; s18 = 0.760; s6 = 0.56; break;
-    case 20: rs6 = 1.541; s18 = 0.879; s6 = 0.75; break;
-    case 21: rs6 = 1.158; s18 = 1.746; break;
-    case 22: rs6 = 1.239; s18 = 1.098; break;
-    case 23: rs6 = 1.087; s18 = 2.033; break;
-    case 24: rs6 = 1.370; s18 = 1.442; break;
-    case 25: rs6 = 1.223; s18 = 1.219; break;
-    case 26: rs6 = 1.660; s18 = 0.550; break;
-    case 27: rs6 = 1.613; s18 = 1.868; break;
-    case 28: rs6 = 0.929; s18 = 1.975; break;
-    case 29: rs6 = 0.806; s18 = 1.764; break;
-    case 30: rs6 = 0.837; s18 = 2.055; break;
-    case 31: rs6 = 1.215; s18 = 0.663; break;
-    case 32: rs6 = 1.221; s18 = 0.560; break;
-    case 33: rs6 = 1.128; s18 = 1.494; break;
-    case 34: rs6 = 1.176; s18 = 1.775; break;
-    case 35: rs6 = 0.949; s18 = 0.792; break;
-    case 36: rs6 = 1.333; s18 = 0.998; break;
-    case 37: rs6 = 1.605; s18 = 1.118; break;
-    case 38: rs6 = 1.671; s18 = 1.061; break;
-    case 39: rs6 = 1.931; s18 = 2.168; break;
-    case 40: rs6 = 1.378; s18 = 1.217; break;
-    case 41: rs6 = 1.355; s18 = 1.279; break;
-    case 42: rs6 = 1.373; s18 = 0.595; break;
-    case 43: rs6 = 1.417; s18 = 0.000; break;
-    case 44: rs6 = 1.581; s18 = 0.000; break;
-    case 45: rs6 = 1.325; s18 = 0.000; break;
-    case 46: rs6 = 1.619; s18 = 0.000; break;
-    case 47: rs6 = 1.446; s18 = 0.000; break;
-    /* DFTB3(zeta = 4.0), old deprecated parameters; case ("dftb3"); rs6 = 1.235; s18 = 0.673; */
-    case 48: rs6 = 1.221; s18 = 1.206; break;
-    default:
-        error->all(FLERR, "Functional name unknown");
-        break;
+        // default def2-QZVP (almost basis set limit)
+        std::unordered_map<std::string, int> commandMap = {
+        { "slater-dirac-exchange", 1}, { "b-lyp", 2 },    { "b-p", 3 },       { "b97-d", 4 },      { "revpbe", 5 },
+        { "pbe", 6 },                  { "pbesol", 7 },   { "rpw86-pbe", 8 }, { "rpbe", 9 },       { "tpss", 10 },
+        { "b3-lyp", 11 },              { "pbe0", 12 },    { "hse06", 13 },    { "revpbe38", 14 },  { "pw6b95", 15 },
+        { "tpss0", 16 },               { "b2-plyp", 17 }, { "pwpb95", 18 },   { "b2gp-plyp", 19 }, { "ptpss", 20 },
+        { "hf", 21 },                  { "mpwlyp", 22 },  { "bpbe", 23 },     { "bh-lyp", 24 },    { "tpssh", 25 },
+        { "pwb6k", 26 },               { "b1b95", 27 },   { "bop", 28 },      { "o-lyp", 29 },     { "o-pbe", 30 },
+        { "ssb", 31 },                 { "revssb", 32 },  { "otpss", 33 },    { "b3pw91", 34 },    { "revpbe0", 35 },
+        { "pbe38", 36 },               { "mpw1b95", 37 }, { "mpwb1k", 38 },   { "bmk", 39 },       { "cam-b3lyp", 40 },
+        { "lc-wpbe", 41 },             { "m05", 42 },     { "m052x", 43 },    { "m06l", 44 },      { "m06", 45 },
+        { "m062x", 46 },               { "m06hf", 47 },   { "hcth120", 48 }
+        };
+
+        int commandCode = commandMap[functional_name];
+        switch (commandCode) {
+        case 1: rs6 = 0.999; s18 = -1.957; rs18 = 0.697; break;
+        case 2: rs6 = 1.094; s18 = 1.682; break;
+        case 3: rs6 = 1.139; s18 = 1.683; break;
+        case 4: rs6 = 0.892; s18 = 0.909; break;
+        case 5: rs6 = 0.923; s18 = 1.010; break;
+        case 6: rs6 = 1.217; s18 = 0.722; break;
+        case 7: rs6 = 1.345; s18 = 0.612; break;
+        case 8: rs6 = 1.224; s18 = 0.901; break;
+        case 9: rs6 = 0.872; s18 = 0.514; break;
+        case 10: rs6 = 1.166; s18 = 1.105; break;
+        case 11: rs6 = 1.261; s18 = 1.703; break;
+        case 12: rs6 = 1.287; s18 = 0.928; break;
+        case 13: rs6 = 1.129; s18 = 0.109; break;
+        case 14: rs6 = 1.021; s18 = 0.862; break;
+        case 15: rs6 = 1.532; s18 = 0.862; break;
+        case 16: rs6 = 1.252; s18 = 1.242; break;
+        case 17: rs6 = 1.427; s18 = 1.022; s6 = 0.64; break;
+        case 18: rs6 = 1.557; s18 = 0.705; s6 = 0.82; break;
+        case 19: rs6 = 1.586; s18 = 0.760; s6 = 0.56; break;
+        case 20: rs6 = 1.541; s18 = 0.879; s6 = 0.75; break;
+        case 21: rs6 = 1.158; s18 = 1.746; break;
+        case 22: rs6 = 1.239; s18 = 1.098; break;
+        case 23: rs6 = 1.087; s18 = 2.033; break;
+        case 24: rs6 = 1.370; s18 = 1.442; break;
+        case 25: rs6 = 1.223; s18 = 1.219; break;
+        case 26: rs6 = 1.660; s18 = 0.550; break;
+        case 27: rs6 = 1.613; s18 = 1.868; break;
+        case 28: rs6 = 0.929; s18 = 1.975; break;
+        case 29: rs6 = 0.806; s18 = 1.764; break;
+        case 30: rs6 = 0.837; s18 = 2.055; break;
+        case 31: rs6 = 1.215; s18 = 0.663; break;
+        case 32: rs6 = 1.221; s18 = 0.560; break;
+        case 33: rs6 = 1.128; s18 = 1.494; break;
+        case 34: rs6 = 1.176; s18 = 1.775; break;
+        case 35: rs6 = 0.949; s18 = 0.792; break;
+        case 36: rs6 = 1.333; s18 = 0.998; break;
+        case 37: rs6 = 1.605; s18 = 1.118; break;
+        case 38: rs6 = 1.671; s18 = 1.061; break;
+        case 39: rs6 = 1.931; s18 = 2.168; break;
+        case 40: rs6 = 1.378; s18 = 1.217; break;
+        case 41: rs6 = 1.355; s18 = 1.279; break;
+        case 42: rs6 = 1.373; s18 = 0.595; break;
+        case 43: rs6 = 1.417; s18 = 0.000; break;
+        case 44: rs6 = 1.581; s18 = 0.000; break;
+        case 45: rs6 = 1.325; s18 = 0.000; break;
+        case 46: rs6 = 1.619; s18 = 0.000; break;
+        case 47: rs6 = 1.446; s18 = 0.000; break;
+        /* DFTB3(zeta = 4.0), old deprecated parameters; case ("dftb3"); rs6 = 1.235; s18 = 0.673; */
+        case 48: rs6 = 1.221; s18 = 1.206; break;
+        default:
+            error->all(FLERR, "Functional name unknown");
+            break;
+        }
+
+    } else if (damping_type == bj_damping) {
+        s6 = 1.0;
+        alp = 14.0;
+
+        std::unordered_map<std::string, int> commandMap = {
+            {"b-p", 1}, {"b-lyp", 2}, {"revpbe", 3}, {"rpbe", 4}, {"b97-d", 5}, {"pbe", 6},
+            {"rpw86-pbe", 7}, {"b3-lyp", 8}, {"tpss", 9}, {"hf", 10}, {"tpss0", 11}, {"pbe0", 12},
+            {"hse06", 13}, {"revpbe38", 14}, {"pw6b95", 15}, {"b2-plyp", 16}, {"dsd-blyp", 17},
+            {"dsd-blyp-fc", 18}, {"bop", 19}, {"mpwlyp", 20}, {"o-lyp", 21}, {"pbesol", 22}, {"bpbe", 23},
+            {"opbe", 24}, {"ssb", 25}, {"revssb", 26}, {"otpss", 27}, {"b3pw91", 28}, {"bh-lyp", 29},
+            {"revpbe0", 30}, {"tpssh", 31}, {"mpw1b95", 32}, {"pwb6k", 33}, {"b1b95", 34}, {"bmk", 35},
+            {"cam-b3lyp", 36}, {"lc-wpbe", 37}, {"b2gp-plyp", 38}, {"ptpss", 39}, {"pwpb95", 40},
+            {"hf/mixed", 41}, {"hf/sv", 42}, {"hf/minis", 43}, {"b3-lyp/6-31gd", 44}, {"hcth120", 45},
+            {"pw1pw", 46}, {"pwgga", 47}, {"hsesol", 48}, {"hf3c", 49}, {"hf3cv", 50}, {"pbeh3c", 51},
+            {"pbeh-3c", 52}
+        };
+
+        int commandCode = commandMap[functional_name];
+        switch (commandCode) {
+            case 1: rs6 = 0.3946; s18 = 3.2822; rs18 = 4.8516; break;
+            case 2: rs6 = 0.4298; s18 = 2.6996; rs18 = 4.2359; break;
+            case 3: rs6 = 0.5238; s18 = 2.3550; rs18 = 3.5016; break;
+            case 4: rs6 = 0.1820; s18 = 0.8318; rs18 = 4.0094; break;
+            case 5: rs6 = 0.5545; s18 = 2.2609; rs18 = 3.2297; break;
+            case 6: rs6 = 0.4289; s18 = 0.7875; rs18 = 4.4407; break;
+            case 7: rs6 = 0.4613; s18 = 1.3845; rs18 = 4.5062; break;
+            case 8: rs6 = 0.3981; s18 = 1.9889; rs18 = 4.4211; break;
+            case 9: rs6 = 0.4535; s18 = 1.9435; rs18 = 4.4752; break;
+            case 10: rs6 = 0.3385; s18 = 0.9171; rs18 = 2.8830; break;
+            case 11: rs6 = 0.3768; s18 = 1.2576; rs18 = 4.5865; break;
+            case 12: rs6 = 0.4145; s18 = 1.2177; rs18 = 4.8593; break;
+            case 13: rs6 = 0.383; s18 = 2.310; rs18 = 5.685; break;
+            case 14: rs6 = 0.4309; s18 = 1.4760; rs18 = 3.9446; break;
+            case 15: rs6 = 0.2076; s18 = 0.7257; rs18 = 6.3750; break;
+            case 16: rs6 = 0.3065; s18 = 0.9147; rs18 = 5.0570; break; s6 = 0.64;
+            case 17: rs6 = 0.0000; s18 = 0.2130; rs18 = 6.0519; s6 = 0.50; break;
+            case 18: rs6 = 0.0009; s18 = 0.2112; rs18 = 5.9807; s6 = 0.50; break;
+            case 19: rs6 = 0.4870; s18 = 3.2950; rs18 = 3.5043; break;
+            case 20: rs6 = 0.4831; s18 = 2.0077; rs18 = 4.5323; break;
+            case 21: rs6 = 0.5299; s18 = 2.6205; rs18 = 2.8065; break;
+            case 22: rs6 = 0.4466; s18 = 2.9491; rs18 = 6.1742; break;
+            case 23: rs6 = 0.4567; s18 = 4.0728; rs18 = 4.3908; break;
+            case 24: rs6 = 0.5512; s18 = 3.3816; rs18 = 2.9444; break;
+            case 25: rs6 = -0.0952; s18 = -0.1744; rs18 = 5.2170; break;
+            case 26: rs6 = 0.4720; s18 = 0.4389; rs18 = 4.0986; break;
+            case 27: rs6 = 0.4634; s18 = 2.7495; rs18 = 4.3153; break;
+            case 28: rs6 = 0.4312; s18 = 2.8524; rs18 = 4.4693; break;
+            case 29: rs6 = 0.2793; s18 = 1.0354; rs18 = 4.9615; break;
+            case 30: rs6 = 0.4679; s18 = 1.7588; rs18 = 3.7619; break;
+            case 31: rs6 = 0.4529; s18 = 2.2382; rs18 = 4.6550; break;
+            case 32: rs6 = 0.1955; s18 = 1.0508; rs18 = 6.4177; break;
+            case 33: rs6 = 0.1805; s18 = 0.9383; rs18 = 7.7627; break;
+            case 34: rs6 = 0.2092; s18 = 1.4507; rs18 = 5.5545; break;
+            case 35: rs6 = 0.1940; s18 = 2.0860; rs18 = 5.9197; break;
+            case 36: rs6 = 0.3708; s18 = 2.0674; rs18 = 5.4743; break;
+            case 37: rs6 = 0.3919; s18 = 1.8541; rs18 = 5.0897; break;
+            case 38: rs6 = 0.0000; s18 = 0.2597; rs18 = 6.3332; s6 = 0.560; break;
+            case 39: rs6 = 0.0000; s18 = 0.2804; rs18 = 6.5745; s6 = 0.750; break;
+            case 40: rs6 = 0.0000; s18 = 0.2904; rs18 = 7.3141; s6 = 0.820; break;
+            // special HF / DFT with eBSSE correction;
+            case 41: rs6 = 0.5607; s18 = 3.9027; rs18 = 4.5622; break;
+            case 42: rs6 = 0.4249; s18 = 2.1849; rs18 = 4.2783; break;
+            case 43: rs6 = 0.1702; s18 = 0.9841; rs18 = 3.8506; break;
+            case 44: rs6 = 0.5014; s18 = 4.0672; rs18 = 4.8409; break;
+            case 45: rs6 = 0.3563; s18 = 1.0821; rs18 = 4.3359; break;
+            /*     DFTB3 old, deprecated parameters : ;
+             *     case ("dftb3"); rs6 = 0.7461; s18 = 3.209; rs18 = 4.1906;
+             *     special SCC - DFTB parametrization;
+             *     full third order DFTB, self consistent charges, hydrogen pair damping with; exponent 4.2;
+            */
+            case 46: rs6 = 0.3807; s18 = 2.3363; rs18 = 5.8844; break;
+            case 47: rs6 = 0.2211; s18 = 2.6910; rs18 = 6.7278; break;
+            case 48: rs6 = 0.4650; s18 = 2.9215; rs18 = 6.2003; break;
+            // special HF - D3 - gCP - SRB / MINIX parametrization;
+            case 49: rs6 = 0.4171; s18 = 0.8777; rs18 = 2.9149; break;
+            // special HF - D3 - gCP - SRB2 / ECP - 2G parametrization;
+            case 50: rs6 = 0.3063; s18 = 0.5022; rs18 = 3.9856; break;
+            // special PBEh - D3 - gCP / def2 - mSVP parametrization;
+            case 51: rs6 = 0.4860; s18 = 0.0000; rs18 = 4.5000; break;
+            case 52: rs6 = 0.4860; s18 = 0.0000; rs18 = 4.5000; break;
+            default:
+                error->all(FLERR, "Functional name unknown");
+                break;
+        }
+    } else if (damping_type == zero_damping_modified) {
+        s6 = 1.0;
+        alp = 14.0;
+
+        std::unordered_map<std::string, int> commandMap = {
+            {"b2-plyp", 1}, {"b3-lyp", 2}, {"b97-d", 3}, {"b-lyp", 4},
+            {"b-p", 5}, {"pbe", 6}, {"pbe0", 7}, {"lc-wpbe", 8}
+        };
+
+        int commandCode = commandMap[functional_name];
+        switch (commandCode) {
+            case 1: rs6 = 1.313134; s18 = 0.717543; rs18 = 0.016035; s6 = 0.640000; break;
+            case 2: rs6 = 1.338153; s18 = 1.532981; rs18 = 0.013988; break;
+            case 3: rs6 = 1.151808; s18 = 1.020078; rs18 = 0.035964; break;
+            case 4: rs6 = 1.279637; s18 = 1.841686; rs18 = 0.014370; break;
+            case 5: rs6 = 1.233460; s18 = 1.945174; rs18 = 0.000000; break;
+            case 6: rs6 = 2.340218; s18 = 0.000000; rs18 = 0.129434; break;
+            case 7: rs6 = 2.077949; s18 = 0.000081; rs18 = 0.116755; break;
+            case 8: rs6 = 1.366361; s18 = 1.280619; rs18 = 0.003160; break;
+            default:
+                error->all(FLERR, "Functional name unknown");
+                break;
+        }
+    } else if (damping_type == bj_damping_modified) {
+        // BJ damping
+        s6 = 1.0;
+        alp = 14.0;
+
+        std::unordered_map<std::string, int> commandMap = {
+            {"b2-plyp", 1}, {"b3-lyp", 2}, {"b97-d", 3}, {"b-lyp", 4},
+            {"b-p", 5}, {"pbe", 6}, {"pbe0", 7}, {"lc-wpbe", 8}
+        };
+
+        int commandCode = commandMap[functional_name];
+        switch (commandCode) {
+            case 1: rs6 = 0.486434; s18 = 0.672820; rs18 = 3.656466; s6 = 0.640000; break;
+            case 2: rs6 = 0.278672; s18 = 1.466677; rs18 = 4.606311; break;
+            case 3: rs6 = 0.240184; s18 = 1.206988; rs18 = 3.864426; break;
+            case 4: rs6 = 0.448486; s18 = 1.875007; rs18 = 3.610679; break;
+            case 5: rs6 = 0.821850; s18 = 3.140281; rs18 = 2.728151; break;
+            case 6: rs6 = 0.012092; s18 = 0.358940; rs18 = 5.938951; break;
+            case 7: rs6 = 0.007912; s18 = 0.528823; rs18 = 6.162326; break;
+            case 8: rs6 = 0.563761; s18 = 0.906564; rs18 = 3.593680; break;
+            default:
+                error->all(FLERR, "Functional name unknown");
+                break;
+        }
+    } else {
+        error->all(FLERR, "Unknown damping type");
     }
 
     rs8 = rs18;
@@ -770,6 +936,7 @@ void PairD3::get_coordination_number() {
             else { cn[iat] += cn_private[rank * n + iat]; }
         }
     } // summation over results from each OpenMP threads
+      //
 
     get_dC6_dCNij();
 }
@@ -931,10 +1098,10 @@ void PairD3::precalculate_tau_array() {
 
 
 /* ----------------------------------------------------------------------
-   Get force coefficients
+   Get forces (Zero damping)
 ------------------------------------------------------------------------- */
 
-void PairD3::get_forces_without_dC6() {
+void PairD3::get_forces_without_dC6_zero_damping() {
     int n = atom->natoms;
 
     for (int dim = 0; dim < n; dim++) { dc6i[dim] = 0.0; }
@@ -1101,6 +1268,195 @@ void PairD3::get_forces_without_dC6() {
 
                 // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
                 const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) * r6_inv * 0.5;
+
+                disp_sum -= dc6_rest * c6;
+                const double dc6iji = dc6_iji_tot[idx_linij];
+                const double dc6ijj = dc6_ijj_tot[idx_linij];
+                dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
+                dc6i_private[n * ithread + iat] += dc6_rest * dc6ijj;
+            } // iat == jat
+        } // iat
+
+        disp_private[ithread] = disp_sum;  // calculate E_disp for sanity check
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                sigma_private[ithread * 9 + i * 3 + j] = sigma_local[i][j];
+            }
+        }
+
+    } // pragma omp parallel
+
+    for (int i = 0; i < nthreads; i++) {
+        for (int iat = 0; iat < n; iat++) {
+            dc6i[iat] += dc6i_private[n * i + iat];
+        }
+
+        disp += disp_private[i];
+    }
+
+    disp_total = disp;
+}
+
+/* ----------------------------------------------------------------------
+   Get forces (BJ damping)
+------------------------------------------------------------------------- */
+
+void PairD3::get_forces_without_dC6_bj_damping() {
+    int n = atom->natoms;
+
+    for (int dim = 0; dim < n; dim++) { dc6i[dim] = 0.0; }
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < 3; j++) {
+            f[i][j] = 0.0;
+        }
+    }
+
+    double disp = 0.0;                  // stores energy (sanity check)
+    int nthreads = omp_get_max_threads();
+
+    #pragma omp parallel
+    {
+        const int ithread = omp_get_thread_num();
+
+        double s8 = s18;
+        double a1 = rs6;
+        double a2 = rs8;
+        double sigma_local[3][3] = {{ 0.0 }};
+        double disp_sum;
+        const double r2_rthr = rthr;
+
+        #pragma omp for schedule(auto)
+        for (int iat =   n - 1; iat >= 0; iat--) {
+            // iat != jat
+            for (int jat = iat - 1; jat >= 0; jat--) {
+                for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
+                    // cutoff radius check
+                    const int idx1 = tau_idx_vdw[k-2];
+                    const int idx2 = tau_idx_vdw[k-1];
+                    const int idx3 = tau_idx_vdw[k];
+                    const double rij[3] = {
+                        x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0],
+                        x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1],
+                        x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
+                    };
+                    const double r2 = MathExtra::lensq3(rij);
+                    if (r2 > r2_rthr) { continue; }
+
+                    const double r = sqrt(r2);
+                    const double r4 = r2 * r2;
+                    const double r6 = r4 * r2;
+                    const double r7 = r6 * r;
+                    const double r8 = r4 * r4;
+
+                    // Calculates damping functions
+                    const double r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[jat]];
+                    const double R0 = a1 * sqrt(3.0 * r42) + a2;
+                    const double t6 = r6 + std::pow(R0, 6);
+                    const double t8 = r8 + std::pow(R0, 8);
+
+                    const int idx_linij = jat + (iat + 1) * iat / 2;
+                    const double c6 = c6_ij_tot[idx_linij];
+
+                    /* // d(r ^ (-6)) / d(r_ij) */
+                    const double x1 = \
+                        - s6 * c6 *  6.0 *  r4 * r  / (t6 * t6)
+                        - s8 * c6 * 24.0 * r42 * r7 / (t8 * t8);
+
+                    const double vec[3] = {
+                        x1 * rij[0] / r,
+                        x1 * rij[1] / r,
+                        x1 * rij[2] / r
+                    };
+
+                    if (iat == 1 && jat == 0) {
+                        printf("iat %d jat %d r2 %lf r %lf x1 %.10e\n", iat, jat, r2, r, x1);
+                        printf("\trij %.10e %.10e %.10e\n", rij[0], rij[1], rij[2]);
+                        printf("\tvec %.10e %.10e %.10e\n", vec[0], vec[1], vec[2]);
+                    }
+
+                    f_private[ithread * n * 3 + iat * 3    ] -= vec[0];
+                    f_private[ithread * n * 3 + iat * 3 + 1] -= vec[1];
+                    f_private[ithread * n * 3 + iat * 3 + 2] -= vec[2];
+                    f_private[ithread * n * 3 + jat * 3    ] += vec[0];
+                    f_private[ithread * n * 3 + jat * 3 + 1] += vec[1];
+                    f_private[ithread * n * 3 + jat * 3 + 2] += vec[2];
+
+                    sigma_local[0][0] += vec[0] * rij[0];
+                    sigma_local[0][1] += vec[0] * rij[1];
+                    sigma_local[0][2] += vec[0] * rij[2];
+                    sigma_local[1][0] += vec[1] * rij[0];
+                    sigma_local[1][1] += vec[1] * rij[1];
+                    sigma_local[1][2] += vec[1] * rij[2];
+                    sigma_local[2][0] += vec[2] * rij[0];
+                    sigma_local[2][1] += vec[2] * rij[1];
+                    sigma_local[2][2] += vec[2] * rij[2];
+
+                    // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
+                    const double dc6_rest = s6 / t6 + 3.0 * s8 * r42 / t8;
+                    disp_sum -= dc6_rest * c6;
+                    const double dc6iji = dc6_iji_tot[idx_linij];
+                    const double dc6ijj = dc6_ijj_tot[idx_linij];
+                    dc6i_private[n * ithread + iat] += dc6_rest * dc6iji;
+                    dc6i_private[n * ithread + jat] += dc6_rest * dc6ijj;
+
+                } // k
+            } // iat != jat
+
+            // iat == jat
+            for (int k = tau_idx_vdw_total_size - 1; k >= 0; k -= 3) {
+                // cutoff radius check
+                const int idx1 = tau_idx_vdw[k-2];
+                const int idx2 = tau_idx_vdw[k-1];
+                const int idx3 = tau_idx_vdw[k];
+                if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
+                const double rij[3] = {
+                    tau_vdw[idx1][idx2][idx3][0],
+                    tau_vdw[idx1][idx2][idx3][1],
+                    tau_vdw[idx1][idx2][idx3][2]
+                };
+                const double r2 = MathExtra::lensq3(rij);
+                // cutoff radius check
+                if (r2 > rthr || r2 < 0.1) { continue; }
+
+                const double r = sqrt(r2);
+                const double r4 = r2 * r2;
+                const double r6 = r4 * r2;
+                const double r7 = r6 * r;
+                const double r8 = r4 * r4;
+
+                const double r42 = r2r4[(atom->type)[iat]] * r2r4[(atom->type)[iat]];
+                const double R0 = a1 * sqrt(3.0 * r42) + a2;
+                const double t6 = r6 + std::pow(R0, 6);
+                const double t8 = r8 + std::pow(R0, 8);
+
+                int idx_linij = iat + (iat + 1) * iat / 2;
+                const double c6 = c6_ij_tot[idx_linij];
+
+                /* // d(r ^ (-6)) / d(r_ij) */
+                const double x1 =\
+                    0.5 * (- s6 * c6 *  6.0 * r4 * r / (t6 * t6)
+                           - s8 * c6 * 24.0 * r42 * r7 / (t8 * t8));
+
+                const double vec[3] = {
+                    x1 * rij[0],
+                    x1 * rij[1],
+                    x1 * rij[2]
+                };
+
+                sigma_local[0][0] += vec[0] * rij[0];
+                sigma_local[0][1] += vec[0] * rij[1];
+                sigma_local[0][2] += vec[0] * rij[2];
+                sigma_local[1][0] += vec[1] * rij[0];
+                sigma_local[1][1] += vec[1] * rij[1];
+                sigma_local[1][2] += vec[1] * rij[2];
+                sigma_local[2][0] += vec[2] * rij[0];
+                sigma_local[2][1] += vec[2] * rij[1];
+                sigma_local[2][2] += vec[2] * rij[2];
+
+                // in dC6_rest all terms BUT C6 - term is saved for the kat - loop
+                const double dc6_rest = (s6 / t6 + 3.0 * s8 * r42 / t8) * 0.5;
 
                 disp_sum -= dc6_rest * c6;
                 const double dc6iji = dc6_iji_tot[idx_linij];
@@ -1331,7 +1687,14 @@ void PairD3::compute(int eflag, int vflag) {
 
     get_coordination_number();
 
-    get_forces_without_dC6();
+    int zero_damping = 1;
+    int zero_damping_modified = 3;
+
+    if (damping_type == zero_damping || damping_type == zero_damping_modified) {
+        get_forces_without_dC6_zero_damping();
+    } else {
+        get_forces_without_dC6_bj_damping();
+    }
     get_forces_with_dC6();
     update(eflag, vflag);
 }

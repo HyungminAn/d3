@@ -104,7 +104,8 @@ namespace LAMMPS_NS {
 
 
         /* ------- Main workers ------- */
-        void get_forces_without_dC6();
+        void get_forces_without_dC6_zero_damping();
+        void get_forces_without_dC6_bj_damping();
         void get_forces_with_dC6();
         void update(int, int);
         /* ------- Main workers ------- */
@@ -124,6 +125,7 @@ namespace LAMMPS_NS {
 
 
         /*--------- Parameters to read ---------*/
+        int damping_type;
         double* r2r4 = nullptr;            // scale r4/r2 values of the atoms by sqrt(Z)
         double* rcov = nullptr;            // covalent radii
         int* mxc = nullptr;                // How large the grid for c6 interpolation
