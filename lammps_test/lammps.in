@@ -8,8 +8,9 @@ variable        path_r0ab  string  "r0ab.csv"
 variable        path_c6ab  string  "d3_pars.csv"
 variable        cutoff_d3       equal   9000
 variable        cutoff_d3_CN    equal   1600
+variable        damping_type    string  "bj"
 
-pair_style      d3    ${cutoff_d3}  ${cutoff_d3_CN}
+pair_style      d3    ${cutoff_d3}  ${cutoff_d3_CN} ${damping_type}
 pair_coeff * *  ${path_r0ab} ${path_c6ab} pbe O C H
 
 thermo 1
