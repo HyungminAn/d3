@@ -1121,7 +1121,7 @@ void PairD3::get_forces_without_dC6_zero_damping() {
 
         double s8 = s18;                    // D3 parameter for 8th-power term (just use s8 from beginning?)
         double sigma_local[3][3] = {{ 0.0 }};
-        double disp_sum;
+        double disp_sum = 0.0;
         const double r2_rthr = rthr;
 
         #pragma omp for schedule(auto)
@@ -1322,7 +1322,7 @@ void PairD3::get_forces_without_dC6_zero_damping_modified() {
 
         double s8 = s18;                    // D3 parameter for 8th-power term (just use s8 from beginning?)
         double sigma_local[3][3] = {{ 0.0 }};
-        double disp_sum;
+        double disp_sum = 0.0;
         const double r2_rthr = rthr;
 
         #pragma omp for schedule(auto)
@@ -1515,7 +1515,7 @@ void PairD3::get_forces_without_dC6_bj_damping() {
         double a1 = rs6;
         double a2 = rs8;
         double sigma_local[3][3] = {{ 0.0 }};
-        double disp_sum;
+        double disp_sum = 0.0;
         const double r2_rthr = rthr;
 
         #pragma omp for schedule(auto)
