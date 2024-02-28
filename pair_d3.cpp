@@ -856,6 +856,10 @@ void PairD3::set_lattice_repetition_criteria(double r_threshold, int* rep_v) {
     rep_v[1] = static_cast<int>(std::abs(r_cutoff / cos_value)) + 1;
     cos_value = MathExtra::dot3(lat_cp_12, lat_v_3) / MathExtra::len3(lat_cp_12);
     rep_v[2] = static_cast<int>(std::abs(r_cutoff / cos_value)) + 1;
+
+    if (domain->xperiodic == 0) { rep_v[0] = 0; }
+    if (domain->yperiodic == 0) { rep_v[1] = 0; }
+    if (domain->zperiodic == 0) { rep_v[2] = 0; }
 }
 
 /* ----------------------------------------------------------------------
