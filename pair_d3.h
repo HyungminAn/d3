@@ -41,6 +41,8 @@ PairStyle(d3, PairD3)
 #include "math_extra.h"
 
 
+void ij_at_linij(int, int&, int&);
+
 namespace LAMMPS_NS {
 
     class PairD3 : public Pair {
@@ -78,13 +80,6 @@ namespace LAMMPS_NS {
         void set_lattice_repetition_criteria(double, int*);
         void set_lattice_vectors();
         /* ------- Lattice information ------- */
-
-
-        /* ------- OpenMP paralleization ------- */
-        void initialize_for_omp();
-        void allocate_for_omp();
-        /* ------- OpenMP paralleization ------- */
-
 
         /* ------- Initialize & Precalculate ------- */
         void load_atom_info();
