@@ -173,7 +173,8 @@ void PairD3::settings(int narg, char **arg) {
     cn_thr = utils::numeric(FLERR, arg[1], false, lmp);
 
     std::unordered_map<std::string, int> commandMap = {
-        { "zero", 1}, { "bj", 2 }, { "zerom", 3 }, { "bjm", 4 },
+        { "d3_damp_zero", 1}, { "d3_damp_bj", 2 },
+        { "d3_damp_zerom", 3 }, { "d3_damp_bjm", 4 },
     };
 
     int commandCode = commandMap[arg[2]];
@@ -186,7 +187,10 @@ void PairD3::settings(int narg, char **arg) {
         error->all(FLERR,
                 "Unknown damping type\n"
                 "\tPossible damping types are:\n"
-                "\t\t'zero', 'bj', 'zerom', 'bjm'\n"
+                "\t\t'd3_damp_zero',\n"
+                "\t\t'd3_damp_bj',\n"
+                "\t\t'd3_damp_zerom',\n"
+                "\t\t'd3_damp_bjm'\n"
                 );
         break;
     }
