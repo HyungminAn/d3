@@ -139,20 +139,6 @@ void PairD3::allocate() {
     memory->create(dc6_ijj_tot, n_ij_combination, "pair_dc6_ijj_tot");
     memory->create(c6_ij_tot,   n_ij_combination, "pair_c6_ij_tot");
 
-    int vdw_range_x = 2 * rep_vdw[0] + 1;
-    int vdw_range_y = 2 * rep_vdw[1] + 1;
-    int vdw_range_z = 2 * rep_vdw[2] + 1;
-    memory->create(tau_vdw, vdw_range_x, vdw_range_y, vdw_range_z, 3, "pair:tau_vdw");
-    tau_idx_vdw_total_size = vdw_range_x * vdw_range_y * vdw_range_z * 3;
-    memory->create(tau_idx_vdw, tau_idx_vdw_total_size, "pair:tau_idx_vdw");
-
-    int cn_range_x  = 2 * rep_cn[0] + 1;
-    int cn_range_y  = 2 * rep_cn[1] + 1;
-    int cn_range_z  = 2 * rep_cn[2] + 1;
-    memory->create(tau_cn,  cn_range_x,  cn_range_y,  cn_range_z,  3, "pair:tau_cn");
-    tau_idx_cn_total_size = cn_range_x * cn_range_y * cn_range_z * 3;
-    memory->create(tau_idx_cn, tau_idx_cn_total_size, "pair:tau_idx_cn");
-
 }
 
 /* ----------------------------------------------------------------------
@@ -833,6 +819,35 @@ void PairD3::set_lattice_vectors() {
 
     set_lattice_repetition_criteria(rthr, rep_vdw);
     set_lattice_repetition_criteria(cn_thr, rep_cn);
+
+    int vdw_range_x = 2 * rep_vdw[0] + 1;
+    int vdw_range_y = 2 * rep_vdw[1] + 1;
+    int vdw_range_z = 2 * rep_vdw[2] + 1;
+    int tau_loop_size_vdw = vdw_range_x * vdw_range_y * vdw_range_z * 3;
+    if (tau_loop_size_vdw != tau_idx_vdw_total_size) {
+        if (tau_idx_vdw != nullptr) {
+            memory->destroy(tau_vdw);
+            memory->destroy(tau_idx_vdw);
+        }
+        tau_idx_vdw_total_size = tau_loop_size_vdw;
+        memory->create(tau_vdw, vdw_range_x, vdw_range_y, vdw_range_z, 3, "pair:tau_vdw");
+        memory->create(tau_idx_vdw, tau_idx_vdw_total_size, "pair:tau_idx_vdw");
+    }
+
+    int cn_range_x  = 2 * rep_cn[0] + 1;
+    int cn_range_y  = 2 * rep_cn[1] + 1;
+    int cn_range_z  = 2 * rep_cn[2] + 1;
+    int tau_loop_size_cn = cn_range_x * cn_range_y * cn_range_z * 3;
+    if (tau_loop_size_cn != tau_idx_cn_total_size) {
+        if (tau_idx_cn != nullptr) {
+            memory->destroy(tau_cn);
+            memory->destroy(tau_idx_cn);
+        }
+        tau_idx_cn_total_size = tau_loop_size_cn;
+        memory->create(tau_cn,  cn_range_x,  cn_range_y,  cn_range_z,  3, "pair:tau_cn");
+        memory->create(tau_idx_cn, tau_idx_cn_total_size, "pair:tau_idx_cn");
+    }
+
 }
 
 /* ----------------------------------------------------------------------
@@ -961,8 +976,6 @@ void PairD3::reallocate_arrays() {
     memory->destroy(x);
     memory->destroy(dc6i);
     memory->destroy(f);
-    memory->destroy(tau_idx_vdw);
-    memory->destroy(tau_idx_cn);
 
     memory->destroy(dc6_iji_tot);
     memory->destroy(dc6_ijj_tot);
@@ -991,20 +1004,6 @@ void PairD3::reallocate_arrays() {
     memory->create(dc6_iji_tot, n_ij_combination, "pair_dc6_iji_tot");
     memory->create(dc6_ijj_tot, n_ij_combination, "pair_dc6_ijj_tot");
     memory->create(c6_ij_tot,   n_ij_combination, "pair_c6_ij_tot");
-
-    int vdw_range_x = 2 * rep_vdw[0] + 1;
-    int vdw_range_y = 2 * rep_vdw[1] + 1;
-    int vdw_range_z = 2 * rep_vdw[2] + 1;
-    memory->create(tau_vdw, vdw_range_x, vdw_range_y, vdw_range_z, 3, "pair:tau_vdw");
-    tau_idx_vdw_total_size = vdw_range_x * vdw_range_y * vdw_range_z * 3;
-    memory->create(tau_idx_vdw, tau_idx_vdw_total_size, "pair:tau_idx_vdw");
-
-    int cn_range_x  = 2 * rep_cn[0] + 1;
-    int cn_range_y  = 2 * rep_cn[1] + 1;
-    int cn_range_z  = 2 * rep_cn[2] + 1;
-    memory->create(tau_cn,  cn_range_x,  cn_range_y,  cn_range_z,  3, "pair:tau_cn");
-    tau_idx_cn_total_size = cn_range_x * cn_range_y * cn_range_z * 3;
-    memory->create(tau_idx_cn, tau_idx_cn_total_size, "pair:tau_idx_cn");
 
     allocate_for_omp();
 
