@@ -1,9 +1,7 @@
 # D3
-LAMMPS implementation of dft-d3 
+LAMMPS implementation of [D3](https://doi.org/10.1063/1.3382344).   
 
-(by Stefan Grimme, Jens Antony, Stephan Ehrlich, and Helge Krieg, J. Chem. Phys. 132, 154104 (2010); DOI:10.1063/1.3382344)
-
-You can find the original version of D3 at https://www.chemie.uni-bonn.de/grimme/de/software/dft-d3.
+You can find the original FORTRAN code of [dftd3](https://www.chemie.uni-bonn.de/grimme/de/software/dft-d3).
 
 # How to use
 1. Put `pair_d3.cpp`, `pair_d3.h` into `lammps/src` directory and compile LAMMPS.   
@@ -32,7 +30,9 @@ Units are Bohr radius: 1 (Bohr radius) = 0.52917721 (Å)
 Available damping types: `d3_damp_zero`, `d3_damp_bj`, `d3_damp_zerom`, `d3_damp_bjm`   
 (Zero damping, Becke-Johnson damping and their modified versions, respectively)
 
-3. Run your LAMMPS code. To use OpenMP version, you should set `OMP_NUM_THREADS` variable adequately to make full use of your CPU cores.
+3. Run your LAMMPS code.
+
+To use OpenMP version, you should set `OMP_NUM_THREADS` variable adequately to make full use of your CPU cores.
 ```bash
 export OMP_NUM_THREADS=32
 lmp -in lammps.in
@@ -41,6 +41,11 @@ or
 ```bash
 env OMP_NUM_THREADS=32 lmp -in lammps.in
 ```
+
+# Note
+1. In [VASP DFT-D3](https://www.vasp.at/wiki/index.php/DFT-D3) page, `VDW_RADIUS` and `VDW_CNRADIUS` are `50.2` and `20.0`, respectively (units are Å).   
+But you can check the default value of these in OUTCAR: `50.2022` and `21.1671`, which is same to default values of this code.   
+To check this by yourself, run VASP with D3 using zero damping (BJ does not give such log).
 
 # Features
 - selective/no periodic boundary condition : implemented   
