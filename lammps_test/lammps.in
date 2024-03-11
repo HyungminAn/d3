@@ -3,16 +3,15 @@ box             tilt large
 newton on
 
 read_data coo
-
-variable        path_r0ab  string  "r0ab.csv"
-variable        path_c6ab  string  "d3_pars.csv"
+variable        path_r0ab  string  "./r0ab.csv"
+variable        path_c6ab  string  "./d3_pars.csv"
 variable        cutoff_d3       equal   9000
 variable        cutoff_d3_CN    equal   1600
-variable        damping_type    string  "bj"
 
-pair_style      d3    ${cutoff_d3}  ${cutoff_d3_CN} ${damping_type}
-pair_coeff * *  ${path_r0ab} ${path_c6ab} pbe O C H
+pair_style hybrid/overlay d3 ${cutoff_d3} ${cutoff_d3_CN} bj
+pair_coeff * *  d3 ${path_r0ab} ${path_c6ab} pbe O C H
 
-thermo 1
+neigh_modify    every 1 delay 0 check yes page 10000000 one 1000000
+dump           1 all custom 10 dump.lammpstrj id type fx fy fz
 
-run 10
+run 24

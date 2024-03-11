@@ -40,9 +40,6 @@ PairStyle(d3, PairD3)
 #include "domain.h"
 #include "math_extra.h"
 
-
-void ij_at_linij(int, int&, int&);
-
 namespace LAMMPS_NS {
 
     class PairD3 : public Pair {

@@ -1,19 +1,35 @@
-# D3 dispersion correction on LAMMPS with openACC
+# D3 dispersion correction on LAMMPS with CUDA
 
-only NVIDIA GPU supported.
+Only NVIDIA GPU supported.
+
+This is for avoiding collision between openACC and pyTorch.
+
+The parallelization used is the same as openACC version.
 
 # Guide
-- use pgi compiler(pgc++) for openACC (or higher version of GCC with openACC support)
-  - gcc/12.2.0   cmake/3.26.2   nvidia_hpc_sdk/22.7 for neuron server
-  - NV_HPC/23.3 for odin/loki server
-- build LAMMPS with the command below
+- Use any compiler supporting nvcc (recommend g++)
+  - ? for neuron server
+  - CUDA/12.1.0 for odin/loki server
+- LAMMPS `23Jun2022` verified.
+- Build LAMMPS with the command below
 ```
-cmake ../cmake/ -C ../cmake/presets/pgi.cmake -D BUILD_MPI=no -D BUILD_OMP=no -D CMAKE_CXX_FLAGS="-acc=gpu -gpu=managed -Minfo=accel -fast" -D CMAKE_C_FLAGS="-acc=gpu -gpu=managed -Minfo=accel -fast"
-make -j 4
+cmake ../cmake -C ../cmake/presets/gcc.cmake \
+-D BUILD_MPI=no -D BUILD_OMP=no \
+-D CMAKE_CXX_FLAGS="-O3" \
+-D CMAKE_CUDA_FLAGS="-arch=sm_86 -fmad=false -O3" \
+-D CMAKE_CUDA_ARCHITECTURES=86
+
+make -j8
 ```
+
+`fmad=false` is essential to get precise figures.
+
+`sm_86` is optimal for a5000 and 3090ti
+
+Be careful that the result value is correct.
+
+
 
 # To do
 - implement zero / zerom damping
-- compile with SimpleNN / SevenNet 
-- implement without gpu=managed (without shared memory)
-- optimize for specific GPU architecture
+- implement without Unified memory
