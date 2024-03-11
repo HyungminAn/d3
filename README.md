@@ -11,6 +11,12 @@ The parallelization used is the same as openACC version.
   - ? for neuron server
   - CUDA/12.1.0 for odin/loki server
 - LAMMPS `23Jun2022` verified.
+- Modify CMakeLists.txt below
+  - `project(lammps CXX)` -> `project(lammps CXX CUDA)`
+  - add `find_package(CUDA)` below project
+  - `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/*.cpp ${LAMMPS_SOURCE_DIR}/*.cu)`
+  - add `target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)` at the end
+
 - Build LAMMPS with the command below
 ```
 cmake ../cmake -C ../cmake/presets/gcc.cmake \
