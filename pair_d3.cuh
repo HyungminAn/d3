@@ -171,15 +171,6 @@ namespace LAMMPS_NS {
         int tau_idx_cn_total_size;
         /*--------- For loop over tau (translation of cell) ---------*/
 
-
-        /* ------------ For OpenMP running ------------ */
-        double* dc6i_private = nullptr;     // save dc6i  of each OMP threads
-        double* disp_private = nullptr;     // save disp  of each OMP threads
-        double* f_private = nullptr;        // save f     of each OMP threads
-        double* sigma_private = nullptr;    // save sigma of each OMP threads
-        double* cn_private = nullptr;       // save cn    of each OMP threads
-        /* ------------ For OpenMP running ------------ */
-
     };
 }    // namespace LAMMPS_NS
 

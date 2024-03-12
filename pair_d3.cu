@@ -26,6 +26,7 @@ inline __host__ __device__ void ij_at_linij(int linij, int &i, int &j) {
     j = linij - i * (i + 1) / 2;
 }
 
+// from MathExtra::lensq3
 inline __host__ __device__ double lensq3(const double *v)
 {
   return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
@@ -55,12 +56,6 @@ PairD3::~PairD3() {
 
         int n = atom->natoms;
         int np1 = atom->ntypes + 1;
-        int vdw_range_x = 2 * rep_vdw[0] + 1;
-        int vdw_range_y = 2 * rep_vdw[1] + 1;
-        int vdw_range_z = 2 * rep_vdw[2] + 1;
-        int cn_range_x  = 2 * rep_cn[0] + 1;
-        int cn_range_y  = 2 * rep_cn[1] + 1;
-        int cn_range_z  = 2 * rep_cn[2] + 1;
 
         cudaFree(r2r4);
         cudaFree(rcov);
@@ -93,33 +88,11 @@ PairD3::~PairD3() {
         for (int i = 0; i < n; i++) { cudaFree(f[i]); }; cudaFree(f);
         for (int i = 0; i < 3; i++) { cudaFree(sigma[i]); }; cudaFree(sigma);
 
-        cudaFree(tau_idx_vdw);
-        cudaFree(tau_idx_cn);
         cudaFree(dc6_iji_tot);
         cudaFree(dc6_ijj_tot);
         cudaFree(c6_ij_tot);
         cudaFree(rep_vdw);
         cudaFree(rep_cn);
-        for (int i = 0; i < vdw_range_x; i++) {
-            for (int j = 0; j < vdw_range_y; j++) {
-                for (int k = 0; k < vdw_range_z; k++) {
-                    cudaFree(tau_vdw[i][j][k]);
-                }
-                cudaFree(tau_vdw[i][j]);
-            }
-            cudaFree(tau_vdw[i]);
-        }
-        cudaFree(tau_vdw);
-        for (int i = 0; i < cn_range_x; i++) {
-            for (int j = 0; j < cn_range_y; j++) {
-                for (int k = 0; k < cn_range_z; k++) {
-                    cudaFree(tau_cn[i][j][k]);
-                }
-                cudaFree(tau_cn[i][j]);
-            }
-            cudaFree(tau_cn[i]);
-        }
-        cudaFree(tau_cn);
     }
 }
 
@@ -195,39 +168,39 @@ void PairD3::allocate() {
     cudaMallocManaged(&dc6_ijj_tot, n_ij_combination * sizeof(double));
     cudaMallocManaged(&c6_ij_tot,   n_ij_combination * sizeof(double));
 
-    int vdw_range_x = 2 * rep_vdw[0] + 1;
-    int vdw_range_y = 2 * rep_vdw[1] + 1;
-    int vdw_range_z = 2 * rep_vdw[2] + 1;
-    tau_idx_vdw_total_size = vdw_range_x * vdw_range_y * vdw_range_z * 3;
+    //int vdw_range_x = 2 * rep_vdw[0] + 1;
+    //int vdw_range_y = 2 * rep_vdw[1] + 1;
+    //int vdw_range_z = 2 * rep_vdw[2] + 1;
+    //tau_idx_vdw_total_size = vdw_range_x * vdw_range_y * vdw_range_z * 3;
 
-    int cn_range_x  = 2 * rep_cn[0] + 1;
-    int cn_range_y  = 2 * rep_cn[1] + 1;
-    int cn_range_z  = 2 * rep_cn[2] + 1;
-    tau_idx_cn_total_size = cn_range_x * cn_range_y * cn_range_z * 3;
+    //int cn_range_x  = 2 * rep_cn[0] + 1;
+    //int cn_range_y  = 2 * rep_cn[1] + 1;
+    //int cn_range_z  = 2 * rep_cn[2] + 1;
+    //tau_idx_cn_total_size = cn_range_x * cn_range_y * cn_range_z * 3;
 
-    cudaMallocManaged(&tau_vdw, vdw_range_x * sizeof(double***));
-    for (int i = 0; i < vdw_range_x; i++) {
-        cudaMallocManaged(&tau_vdw[i], vdw_range_y * sizeof(double**));
-        for (int j = 0; j < vdw_range_y; j++) {
-            cudaMallocManaged(&tau_vdw[i][j], vdw_range_z * sizeof(double*));
-            for (int k = 0; k < vdw_range_z; k++) {
-                cudaMallocManaged(&tau_vdw[i][j][k], 3 * sizeof(double));
-            }
-        }
-    }
-    cudaMallocManaged(&tau_idx_vdw, tau_idx_vdw_total_size * sizeof(int));
+    //cudaMallocManaged(&tau_vdw, vdw_range_x * sizeof(double***));
+    //for (int i = 0; i < vdw_range_x; i++) {
+    //    cudaMallocManaged(&tau_vdw[i], vdw_range_y * sizeof(double**));
+    //    for (int j = 0; j < vdw_range_y; j++) {
+    //        cudaMallocManaged(&tau_vdw[i][j], vdw_range_z * sizeof(double*));
+    //        for (int k = 0; k < vdw_range_z; k++) {
+    //            cudaMallocManaged(&tau_vdw[i][j][k], 3 * sizeof(double));
+    //        }
+    //    }
+    //}
+    //cudaMallocManaged(&tau_idx_vdw, tau_idx_vdw_total_size * sizeof(int));
 
-    cudaMallocManaged(&tau_cn, cn_range_x * sizeof(double***));
-    for (int i = 0; i < cn_range_x; i++) {
-        cudaMallocManaged(&tau_cn[i], cn_range_y * sizeof(double**));
-        for (int j = 0; j < cn_range_y; j++) {
-            cudaMallocManaged(&tau_cn[i][j], cn_range_z * sizeof(double*));
-            for (int k = 0; k < cn_range_z; k++) {
-                cudaMallocManaged(&tau_cn[i][j][k], 3 * sizeof(double));
-            }
-        }
-    }
-    cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(int));
+    //cudaMallocManaged(&tau_cn, cn_range_x * sizeof(double***));
+    //for (int i = 0; i < cn_range_x; i++) {
+    //    cudaMallocManaged(&tau_cn[i], cn_range_y * sizeof(double**));
+    //    for (int j = 0; j < cn_range_y; j++) {
+    //        cudaMallocManaged(&tau_cn[i][j], cn_range_z * sizeof(double*));
+    //        for (int k = 0; k < cn_range_z; k++) {
+    //            cudaMallocManaged(&tau_cn[i][j][k], 3 * sizeof(double));
+    //        }
+    //    }
+    //}
+    //cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(int));
 
 }
 
@@ -249,7 +222,8 @@ void PairD3::settings(int narg, char **arg) {
     cn_thr = utils::numeric(FLERR, arg[1], false, lmp);
 
     std::unordered_map<std::string, int> commandMap = {
-        { "zero", 1 }, { "bj", 2 }, { "zerom", 3 }, { "bjm", 4 },
+        { "d3_damp_zero", 1}, { "d3_damp_bj", 2 },
+        { "d3_damp_zerom", 3 }, { "d3_damp_bjm", 4 },
     };
 
     int commandCode = commandMap[arg[2]];
@@ -261,8 +235,10 @@ void PairD3::settings(int narg, char **arg) {
     default:
         error->all(FLERR,
                 "Unknown damping type\n"
-                "\tPossible damping types are:\n"
-                "\t\t'zero', 'bj', 'zerom', 'bjm'\n"
+                "\t\t'd3_damp_zero',\n"
+                "\t\t'd3_damp_bj',\n"
+                "\t\t'd3_damp_zerom',\n"
+                "\t\t'd3_damp_bjm'\n"
                 );
         break;
     }
@@ -798,18 +774,6 @@ void PairD3::coeff(int narg, char **arg) {
 
 ------------------------------------------------------------------------- */
 
-// read
-// cn
-// mxc
-// type
-// iter
-// c6ab
-
-// write
-// c6_ij_tot
-// c6_iji_tot
-// c6_ijj_tot
-
 __global__ void kernel_getdC6dCNij(
     int linij,
     int *type, double *cn, int *mxc, double *****c6ab, 
@@ -933,6 +897,71 @@ void PairD3::set_lattice_vectors() {
 
     set_lattice_repetition_criteria(rthr, rep_vdw);
     set_lattice_repetition_criteria(cn_thr, rep_cn);
+
+    int vdw_range_x = 2 * rep_vdw[0] + 1;
+    int vdw_range_y = 2 * rep_vdw[1] + 1;
+    int vdw_range_z = 2 * rep_vdw[2] + 1;
+    int tau_loop_size_vdw = vdw_range_x * vdw_range_y * vdw_range_z * 3;
+    if (tau_loop_size_vdw != tau_idx_vdw_total_size) {
+        if (tau_idx_vdw != nullptr) {
+            for (int i = 0; i < vdw_range_x; i++) {
+                for (int j = 0; j < vdw_range_y; j++) {
+                    for (int k = 0; k < vdw_range_z; k++) {
+                        cudaFree(tau_vdw[i][j][k]);
+                    }
+                    cudaFree(tau_vdw[i][j]);
+                }
+                cudaFree(tau_vdw[i]);
+            }
+            cudaFree(tau_vdw);
+            cudaFree(tau_idx_vdw);
+        }
+        tau_idx_vdw_total_size = tau_loop_size_vdw;
+        cudaMallocManaged(&tau_vdw, vdw_range_x * sizeof(double***));
+        for (int i = 0; i < vdw_range_x; i++) {
+            cudaMallocManaged(&tau_vdw[i], vdw_range_y * sizeof(double**));
+            for (int j = 0; j < vdw_range_y; j++) {
+                cudaMallocManaged(&tau_vdw[i][j], vdw_range_z * sizeof(double*));
+                for (int k = 0; k < vdw_range_z; k++) {
+                    cudaMallocManaged(&tau_vdw[i][j][k], 3 * sizeof(double));
+                }
+            }
+        }
+        cudaMallocManaged(&tau_idx_vdw, tau_idx_vdw_total_size * sizeof(double));
+    }
+
+    int cn_range_x  = 2 * rep_cn[0] + 1;
+    int cn_range_y  = 2 * rep_cn[1] + 1;
+    int cn_range_z  = 2 * rep_cn[2] + 1;
+    int tau_loop_size_cn = cn_range_x * cn_range_y * cn_range_z * 3;
+    if (tau_loop_size_cn != tau_idx_cn_total_size) {
+        if (tau_idx_cn != nullptr) {
+            for (int i = 0; i < cn_range_x; i++) {
+                for (int j = 0; j < cn_range_y; j++) {
+                    for (int k = 0; k < cn_range_z; k++) {
+                        cudaFree(tau_cn[i][j][k]);
+                    }
+                    cudaFree(tau_cn[i][j]);
+                }
+                cudaFree(tau_cn[i]);
+            }
+            cudaFree(tau_cn);
+            cudaFree(tau_idx_cn);
+        }
+        tau_idx_cn_total_size = tau_loop_size_cn;
+        cudaMallocManaged(&tau_cn, cn_range_x * sizeof(double***));
+        for (int i = 0; i < cn_range_x; i++) {
+            cudaMallocManaged(&tau_cn[i], cn_range_y * sizeof(double**));
+            for (int j = 0; j < cn_range_y; j++) {
+                cudaMallocManaged(&tau_cn[i][j], cn_range_z * sizeof(double*));
+                for (int k = 0; k < cn_range_z; k++) {
+                    cudaMallocManaged(&tau_cn[i][j][k], 3 * sizeof(double));
+                }
+            }
+        }
+        cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(double));
+    }
+
 }
 
 /* ----------------------------------------------------------------------
@@ -1059,8 +1088,6 @@ void PairD3::reallocate_arrays() {
     cudaFree(x);
     cudaFree(dc6i); for (int i = 0; i < n; i++) { cudaFree(f[i]); }
     cudaFree(f);
-    cudaFree(tau_idx_vdw);
-    cudaFree(tau_idx_cn);
     cudaFree(dc6_iji_tot);
     cudaFree(dc6_ijj_tot);
     cudaFree(c6_ij_tot);
@@ -1084,39 +1111,39 @@ void PairD3::reallocate_arrays() {
     cudaMallocManaged(&dc6_ijj_tot, n_ij_combination * sizeof(double));
     cudaMallocManaged(&c6_ij_tot,   n_ij_combination * sizeof(double));
 
-    int vdw_range_x = 2 * rep_vdw[0] + 1;
-    int vdw_range_y = 2 * rep_vdw[1] + 1;
-    int vdw_range_z = 2 * rep_vdw[2] + 1;
-    tau_idx_vdw_total_size = vdw_range_x * vdw_range_y * vdw_range_z * 3;
+    //int vdw_range_x = 2 * rep_vdw[0] + 1;
+    //int vdw_range_y = 2 * rep_vdw[1] + 1;
+    //int vdw_range_z = 2 * rep_vdw[2] + 1;
+    //tau_idx_vdw_total_size = vdw_range_x * vdw_range_y * vdw_range_z * 3;
 
-    int cn_range_x  = 2 * rep_cn[0] + 1;
-    int cn_range_y  = 2 * rep_cn[1] + 1;
-    int cn_range_z  = 2 * rep_cn[2] + 1;
-    tau_idx_cn_total_size = cn_range_x * cn_range_y * cn_range_z * 3;
+    //int cn_range_x  = 2 * rep_cn[0] + 1;
+    //int cn_range_y  = 2 * rep_cn[1] + 1;
+    //int cn_range_z  = 2 * rep_cn[2] + 1;
+    //tau_idx_cn_total_size = cn_range_x * cn_range_y * cn_range_z * 3;
 
-    cudaMallocManaged(&tau_vdw, vdw_range_x * sizeof(double***));
-    for (int i = 0; i < vdw_range_x; i++) {
-        cudaMallocManaged(&tau_vdw[i], vdw_range_y * sizeof(double**));
-        for (int j = 0; j < vdw_range_y; j++) {
-            cudaMallocManaged(&tau_vdw[i][j], vdw_range_z * sizeof(double*));
-            for (int k = 0; k < vdw_range_z; k++) {
-                cudaMallocManaged(&tau_vdw[i][j][k], 3 * sizeof(double));
-            }
-        }
-    }
-    cudaMallocManaged(&tau_idx_vdw, tau_idx_vdw_total_size * sizeof(int));
+    //cudaMallocManaged(&tau_vdw, vdw_range_x * sizeof(double***));
+    //for (int i = 0; i < vdw_range_x; i++) {
+    //    cudaMallocManaged(&tau_vdw[i], vdw_range_y * sizeof(double**));
+    //    for (int j = 0; j < vdw_range_y; j++) {
+    //        cudaMallocManaged(&tau_vdw[i][j], vdw_range_z * sizeof(double*));
+    //        for (int k = 0; k < vdw_range_z; k++) {
+    //            cudaMallocManaged(&tau_vdw[i][j][k], 3 * sizeof(double));
+    //        }
+    //    }
+    //}
+    //cudaMallocManaged(&tau_idx_vdw, tau_idx_vdw_total_size * sizeof(int));
 
-    cudaMallocManaged(&tau_cn, cn_range_x * sizeof(double***));
-    for (int i = 0; i < cn_range_x; i++) {
-        cudaMallocManaged(&tau_cn[i], cn_range_y * sizeof(double**));
-        for (int j = 0; j < cn_range_y; j++) {
-            cudaMallocManaged(&tau_cn[i][j], cn_range_z * sizeof(double*));
-            for (int k = 0; k < cn_range_z; k++) {
-                cudaMallocManaged(&tau_cn[i][j][k], 3 * sizeof(double));
-            }
-        }
-    }
-    cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(int));
+    //cudaMallocManaged(&tau_cn, cn_range_x * sizeof(double***));
+    //for (int i = 0; i < cn_range_x; i++) {
+    //    cudaMallocManaged(&tau_cn[i], cn_range_y * sizeof(double**));
+    //    for (int j = 0; j < cn_range_y; j++) {
+    //        cudaMallocManaged(&tau_cn[i][j], cn_range_z * sizeof(double*));
+    //        for (int k = 0; k < cn_range_z; k++) {
+    //            cudaMallocManaged(&tau_cn[i][j][k], 3 * sizeof(double));
+    //        }
+    //    }
+    //}
+    //cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(int));
 
     /* -------------- Create new arrays -------------- */
 }
@@ -1219,8 +1246,297 @@ void PairD3::precalculate_tau_array() {
    Get forces (Zero damping)
 ------------------------------------------------------------------------- */
 
-// openACC not implemented
+__global__ void kernel_getForcesWithoutZero(
+    int linij, int maxtau,
+    double s6, double s8, double a1_sqrt3, double a1, double a2, double r2_rthr, double alp6, double alp8,
+    double **x, int *type, double *dc6i, double *r2r4, double **r0ab, int *tau_idx_vdw, double ****tau_vdw, int *rep_vdw,
+    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot, 
+    double *disp, double **f, double **sigma
+) {
+
+    int iter = blockIdx.x * blockDim.x + threadIdx.x;
+    if (iter >= linij) return;
+
+    int iat, jat;
+    ij_at_linij(iter, iat, jat);
+
+    __shared__ double sigma_00[128];
+    __shared__ double sigma_01[128];
+    __shared__ double sigma_02[128];
+    __shared__ double sigma_10[128];
+    __shared__ double sigma_11[128];
+    __shared__ double sigma_12[128];
+    __shared__ double sigma_20[128];
+    __shared__ double sigma_21[128];
+    __shared__ double sigma_22[128];
+    __shared__ double disp_shared[128];
+
+    double sigma_local_00 = 0.0;
+    double sigma_local_01 = 0.0;
+    double sigma_local_02 = 0.0;
+    double sigma_local_10 = 0.0;
+    double sigma_local_11 = 0.0;
+    double sigma_local_12 = 0.0;
+    double sigma_local_20 = 0.0;
+    double sigma_local_21 = 0.0;
+    double sigma_local_22 = 0.0;
+    double disp_local = 0.0;
+
+    for (int k = maxtau - 1; k >= 0; k -= 3) {
+
+        const int idx1 = tau_idx_vdw[k-2];
+        const int idx2 = tau_idx_vdw[k-1];
+        const int idx3 = tau_idx_vdw[k];
+
+        if (iat == jat) {
+            if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
+            const double rij[3] = {
+                tau_vdw[idx1][idx2][idx3][0],
+                tau_vdw[idx1][idx2][idx3][1],
+                tau_vdw[idx1][idx2][idx3][2]
+            };
+            const double r2 = lensq3(rij);
+
+            if (r2 > r2_rthr || r2 < 0.1) { continue; }
+
+            const double r2_inv = 1.0 / r2;
+            const double r = sqrt(r2);
+            const double r_inv = 1.0 / r;
+            const double r0 = r0ab[type[iat]][type[iat]];
+
+            double tmp_v = (a1 * r0) * r_inv;
+            tmp_v *= tmp_v * tmp_v * tmp_v * tmp_v * tmp_v * tmp_v; // ^7
+            double t6 = tmp_v * tmp_v; // ^14
+            const double damp6 = 1.0 / (1.0 + 6.0 * t6);
+            tmp_v = (a2 * r0) * r_inv;
+            tmp_v = tmp_v * tmp_v; // ^2
+            tmp_v = tmp_v * tmp_v; // ^4
+            tmp_v = tmp_v * tmp_v; // ^8
+            double t8 = tmp_v * tmp_v; // ^16
+            const double damp8 = 1.0 / (1.0 + 6.0 * t8);
+
+            const double c6 = c6_ij_tot[iter];
+            const double r42 = r2r4[type[iat]] * r2r4[type[iat]];
+            const double r6_inv = r2_inv * r2_inv * r2_inv;
+            const double r7_inv = r6_inv * r_inv;
+            const double x1 = 0.5 * 6.0 * c6 * r7_inv * (s6 * damp6 * (alp6 * t6 * damp6 - 1.0) + s8 * r42 * r2_inv * damp8 * (3.0 * alp8 * t8 * damp8 - 4.0)) * r_inv;
+
+            const double vec[3] = {
+                x1 * rij[0],
+                x1 * rij[1],
+                x1 * rij[2]
+            };
+
+            sigma_local_00 += vec[0] * rij[0];
+            sigma_local_01 += vec[0] * rij[1];
+            sigma_local_02 += vec[0] * rij[2];
+            sigma_local_10 += vec[1] * rij[0];
+            sigma_local_11 += vec[1] * rij[1];
+            sigma_local_12 += vec[1] * rij[2];
+            sigma_local_20 += vec[2] * rij[0];
+            sigma_local_21 += vec[2] * rij[1];
+            sigma_local_22 += vec[2] * rij[2];
+
+            const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) * r6_inv * 0.5;
+            disp_local -= dc6_rest * c6;
+            const double dc6iji = dc6_iji_tot[iter];
+            const double dc6ijj = dc6_ijj_tot[iter];
+            atomicAdd(&dc6i[iat], dc6_rest * dc6iji);
+            atomicAdd(&dc6i[jat], dc6_rest * dc6ijj);
+        }
+        
+        else {
+            const double rij[3] = {
+                x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0],
+                x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1],
+                x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
+            };
+            const double r2 = lensq3(rij);
+
+            if (r2 > r2_rthr || r2 < 0.1) { continue; }
+
+            const double r2_inv = 1.0 / r2;
+            const double r = sqrt(r2);
+            const double r_inv = 1.0 / r;
+            const double r0 = r0ab[type[iat]][type[jat]];
+
+            double tmp_v = (a1 * r0) * r_inv;
+            double t6 = tmp_v;
+            t6 *= t6;       // ^2
+            t6 *= tmp_v;    // ^3
+            t6 *= t6;       // ^6
+            t6 *= tmp_v;    // ^7
+            t6 *= t6;       // ^14
+            const double damp6 = 1.0 / (1.0 + 6.0 * t6);
+            t6 *= damp6;    // pre-calculation
+            double t8 = (a2 * r0) * r_inv;
+            t8 *= t8;       // ^2
+            t8 *= t8;       // ^4
+            t8 *= t8;       // ^8
+            t8 *= t8;       // ^16
+            const double damp8 = 1.0 / (1.0 + 6.0 * t8);
+            t8 *= damp8;    // pre-calculation
+
+            const double c6 = c6_ij_tot[iter];
+            const double r6_inv = r2_inv * r2_inv * r2_inv;
+            const double r7_inv = r6_inv * r_inv;
+
+            const double r42 = r2r4[type[iat]] * r2r4[type[jat]];
+            /* // d(r ^ (-6)) / d(r_ij) */
+            const double x1 = 6.0 * c6 * r7_inv * (s6 * damp6 * (14.0 * t6 - 1.0) + s8 * r42 * r2_inv * damp8 * (48.0 * t8 - 4.0)) * r_inv;
+
+            const double vec[3] = {
+                x1 * rij[0],
+                x1 * rij[1],
+                x1 * rij[2]
+            };
+
+            atomicAdd(&f[iat][0], -vec[0]);
+            atomicAdd(&f[iat][1], -vec[1]);
+            atomicAdd(&f[iat][2], -vec[2]);
+            atomicAdd(&f[jat][0], vec[0]);
+            atomicAdd(&f[jat][1], vec[1]);
+            atomicAdd(&f[jat][2], vec[2]);
+
+            sigma_local_00 += vec[0] * rij[0];
+            sigma_local_01 += vec[0] * rij[1];
+            sigma_local_02 += vec[0] * rij[2];
+            sigma_local_10 += vec[1] * rij[0];
+            sigma_local_11 += vec[1] * rij[1];
+            sigma_local_12 += vec[1] * rij[2];
+            sigma_local_20 += vec[2] * rij[0];
+            sigma_local_21 += vec[2] * rij[1];
+            sigma_local_22 += vec[2] * rij[2];
+
+            const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_inv) * r6_inv;
+            disp_local -= dc6_rest * c6;
+            const double dc6iji = dc6_iji_tot[iter];
+            const double dc6ijj = dc6_ijj_tot[iter];
+            atomicAdd(&dc6i[iat], dc6_rest * dc6iji);
+            atomicAdd(&dc6i[jat], dc6_rest * dc6ijj);
+        }
+    }
+
+    sigma_00[threadIdx.x] = sigma_local_00;
+    sigma_01[threadIdx.x] = sigma_local_01;
+    sigma_02[threadIdx.x] = sigma_local_02;
+    sigma_10[threadIdx.x] = sigma_local_10;
+    sigma_11[threadIdx.x] = sigma_local_11;
+    sigma_12[threadIdx.x] = sigma_local_12;
+    sigma_20[threadIdx.x] = sigma_local_20;
+    sigma_21[threadIdx.x] = sigma_local_21;
+    sigma_22[threadIdx.x] = sigma_local_22;
+    disp_shared[threadIdx.x] = disp_local;
+    __syncthreads();
+
+    for (int s = 1; s < blockDim.x; s *= 2) {
+        if (threadIdx.x % (2 * s) == 0) {
+            sigma_00[threadIdx.x] += sigma_00[threadIdx.x + s];
+            sigma_01[threadIdx.x] += sigma_01[threadIdx.x + s];
+            sigma_02[threadIdx.x] += sigma_02[threadIdx.x + s];
+            sigma_10[threadIdx.x] += sigma_10[threadIdx.x + s];
+            sigma_11[threadIdx.x] += sigma_11[threadIdx.x + s];
+            sigma_12[threadIdx.x] += sigma_12[threadIdx.x + s];
+            sigma_20[threadIdx.x] += sigma_20[threadIdx.x + s];
+            sigma_21[threadIdx.x] += sigma_21[threadIdx.x + s];
+            sigma_22[threadIdx.x] += sigma_22[threadIdx.x + s];
+            disp_shared[threadIdx.x] += disp_shared[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        atomicAdd(&sigma[0][0], sigma_00[0]);
+        atomicAdd(&sigma[0][1], sigma_01[0]);
+        atomicAdd(&sigma[0][2], sigma_02[0]);
+        atomicAdd(&sigma[1][0], sigma_10[0]);
+        atomicAdd(&sigma[1][1], sigma_11[0]);
+        atomicAdd(&sigma[1][2], sigma_12[0]);
+        atomicAdd(&sigma[2][0], sigma_20[0]);
+        atomicAdd(&sigma[2][1], sigma_21[0]);
+        atomicAdd(&sigma[2][2], sigma_22[0]);
+        atomicAdd(disp, disp_shared[0]);
+    }
+
+}
+
 void PairD3::get_forces_without_dC6_zero_damping() {
+    int n = atom->natoms;
+    int np1 = atom->ntypes + 1;
+    int linij = n * (n + 1) / 2;
+    int maxtau = tau_idx_vdw_total_size;
+
+    for (int dim = 0; dim < n; dim++) { dc6i[dim] = 0.0; }
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < 3; j++) {
+            f[i][j] = 0.0;
+        }
+    }
+
+    for (int ii = 0; ii < 3; ii++) {
+        for (int jj = 0; jj < 3; jj++) {
+            sigma[ii][jj] = 0.0;
+        }
+    }
+
+    const double s8 = s18;
+    const double a1 = rs6;
+    const double a1_sqrt3 = a1 * sqrt(3);
+    const double a2 = rs8;
+    const double r2_rthr = rthr;
+
+    double *cuda_disp;
+    cudaMallocManaged(&cuda_disp, sizeof(double));
+    *cuda_disp = 0.0;
+
+    int *cuda_type;
+    cudaMallocManaged(&cuda_type, sizeof(int) * n);
+    cudaMemcpy(cuda_type, atom->type, n * sizeof(int), cudaMemcpyHostToDevice);
+
+    double *cuda_r2r4;
+    cudaMallocManaged(&cuda_r2r4, sizeof(double) * np1);
+    cudaMemcpy(cuda_r2r4, r2r4, np1 * sizeof(double), cudaMemcpyHostToDevice);
+
+    double **cuda_r0ab;
+    cudaMallocManaged(&cuda_r0ab, sizeof(double*) * np1);
+    for (int i = 0; i < np1; i++) {
+        cudaMallocManaged(&cuda_r0ab[i], sizeof(double) * np1);
+    }
+    for (int i = 0; i < np1; i++) {
+        cudaMemcpy(cuda_r0ab[i], r0ab[i], np1 * sizeof(double), cudaMemcpyHostToDevice);
+    }
+
+    int threadsPerBlock = 128;
+    int blocksPerGrid = (linij + threadsPerBlock - 1) / threadsPerBlock;
+
+    // cudaEvent_t start, stop;
+    // cudaEventCreate(&start);
+    // cudaEventCreate(&stop);
+    // cudaEventRecord(start);
+
+    kernel_getForcesWithoutZero<<<blocksPerGrid, threadsPerBlock>>>(
+        linij, maxtau, s6, s8, a1_sqrt3, a1, a2, r2_rthr, alp6, alp8, x, cuda_type, dc6i, cuda_r2r4, cuda_r0ab, tau_idx_vdw, tau_vdw, rep_vdw, c6_ij_tot, dc6_iji_tot, dc6_ijj_tot, cuda_disp, f, sigma
+    );
+    cudaDeviceSynchronize();
+
+    // cudaEventRecord(stop);
+    // cudaEventSynchronize(stop);
+    // float milliseconds = 0;
+    // cudaEventElapsedTime(&milliseconds, start, stop);
+    // printf("Time elapsed for get_forces_without_dC6_bj_damping: %f ms\n", milliseconds);
+    // cudaEventDestroy(start);
+    // cudaEventDestroy(stop);
+
+    cudaFree(cuda_type);
+    cudaFree(cuda_r2r4);
+    for (int i = 0; i < np1; i++) {
+        cudaFree(cuda_r0ab[i]);
+    }
+    cudaFree(cuda_r0ab);
+
+    disp_total = *cuda_disp;
+    cudaFree(cuda_disp);
 
 }
 
@@ -1509,7 +1825,6 @@ void PairD3::get_forces_without_dC6_bj_damping() {
     cudaFree(cuda_type);
     cudaFree(cuda_r2r4);
 
-    //disp_total = disp;
     disp_total = *cuda_disp;
     cudaFree(cuda_disp);
 
@@ -1518,10 +1833,6 @@ void PairD3::get_forces_without_dC6_bj_damping() {
 /* ----------------------------------------------------------------------
    Get forces
 ------------------------------------------------------------------------- */
-
-//    double s6, double s8, double a1_sqrt3, double a2, double r2_rthr, double **sigma,
-//    double **x, int *type, double *dc6i, double *r2r4, int *tau_idx_vdw, double ****tau_vdw, int *rep_vdw,
-//    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot, 
 
 __global__ void kernel_getForcesWith(
     int linij, int maxtau, 
