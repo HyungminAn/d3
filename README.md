@@ -6,47 +6,96 @@ This is for avoiding collision between openACC and pyTorch.
 
 The parallelization used is the same as openACC version.
 
-# Guide
-Build information
-- My module lists
-  - mkl/2022.1.0 mpi/2021.6.0 CUDA/12.1.0 (odin/loki server)
-- Use any compiler supporting nvcc (recommend g++)
-  - g++ 12.1.1 verified (odin/loki server)
-- LAMMPS `23Jun2022` verified.
-- Modify CMakeLists.txt below
-  - `project(lammps CXX)` -> `project(lammps CXX CUDA)`
-  - add `find_package(CUDA)` below project
-  - `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/*.cpp ${LAMMPS_SOURCE_DIR}/*.cu)`
-  - add `target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)` at the end
+## Installation
 
-- Build LAMMPS with the command below
-```
-cmake ../cmake -C ../cmake/presets/gcc.cmake \
--D BUILD_MPI=no -D BUILD_OMP=no \
--D CMAKE_CXX_FLAGS="-O3" \
--D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
--D CMAKE_CUDA_ARCHITECTURES="86;80;70;61" \
+### Compile CUDA D3 on LAMMPS
+Requirements
+- compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- LAMMPS (`23Jun2022` tested)
 
-make -j8
-```
-- If you compiled with SevenNet, follow the insturctions of SevenNet + LAMMPS
-- and add this flag on the cmake command
-  - `-D CMAKE_PREFIX_PATH=$(python -c 'import torch;print(torch.utils.cmake_prefix_path')`
+My environment
+- Module: compiler/2022.1.0 mpi/2021.6.0 mkl/2022.1.0 CUDA/12.1.0 (odin/loki server)
 
-Notes
-- `fmad=false` is essential to get precise figures. Be careful that the result value is correct.
-- CUDA_ARCHITECUTRE
+-----
+
+1. Configure `CMakeLists.txt` in the lammps/cmake directory
+  - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
+  - Add to the last line:
+    ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+    ```
+
+2. Enter command in the lammps directory
+  ```
+  mkdir build
+  cd build
+
+  cmake ../cmake -C ../cmake/presets/gcc.cmake \
+  -D BUILD_MPI=no -D BUILD_OMP=no \
+  -D CMAKE_CXX_FLAGS="-O3" \
+  -D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
+  -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61" \
+  -D CMAKE_PREFIX_PATH=`python -c $(import torch;print(torch.utils.cmake_prefix_path)')
+
+  make -j8
+  ```
+
+### Compile CUDA D3 with SevenNet on LAMMPS
+Requirements
+- libtorch (pre-cxx11 and cxx11 tested)
+- compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- LAMMPS (`23Jun2022` tested)
+
+My environment
+- Module: compiler/2022.1.0 mpi/2021.6.0 mkl/2022.1.0 CUDA/12.1.0 (odin/loki server)
+- Conda: pub_sevenn (SevenNet uses libtorch of this env)
+
+-----
+
+1. Configure `CMakeLists.txt` in the lammps/cmake directory
+  - Change: `set(CMAKE_CXX_STANDARD 11)` -> `set(CMAKE_CXX_STANDARD 14)`
+  - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
+  - Add to the last line:
+    ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+
+    find_package(Torch REQUIRED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+    target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}")
+    ```
+
+2. Enter command in the lammps directory
+  ```
+  mkdir build
+  cd build
+
+  cmake ../cmake -C ../cmake/presets/gcc.cmake \
+  -D BUILD_MPI=no -D BUILD_OMP=no \
+  -D CMAKE_CXX_FLAGS="-O3" \
+  -D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
+  -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61" \
+  -D CMAKE_PREFIX_PATH=`python -c $(import torch;print(torch.utils.cmake_prefix_path)')
+
+  make -j8
+  ```
+
+### Notes
+- `fmad=false` is essential to obtain precise figures. Be careful to ensure that the result value is correct.
+- CMAKE_CUDA_ARCHITECUTRES lists
   - 61 -> Titan X, P6000
   - 70 -> v100
   - 80 -> a100
   - 86 -> 3090ti, a5000
-- If there is a GPU for the node you are compiling, Cmake will find it, so CMAKE_CUDA_ARCHITECUTRES is unnecessary (maybe)
-- If there is no GPU in node compilng, CMake can cause errors.
+- If there is a GPU on the node you are compiling, CMake will find it, so setting CMAKE_CUDA_ARCHITECTURES is unnecessary (maybe).
+- If there is no GPU in the node compiling, CMake can cause errors.
 
+## To do
+- Implement without Unified Memory.
+- Unfix the threadsPerBlock=128.
+- Achieve more effective parallelism.
 
-# To do
-- implement without Unified memory
-
-# Cautions
+## Cautions
 - It can be slower than the CPU with a small number of atoms.
 - The CUDA math library differs from C, which can lead to numerical errors.
