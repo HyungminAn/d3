@@ -8,9 +8,10 @@ The parallelization used is the same as openACC version.
 
 # Guide
 Build information
+- My module lists
+  - mkl/2022.1.0 mpi/2021.6.0 CUDA/12.1.0 (odin/loki server)
 - Use any compiler supporting nvcc (recommend g++)
-  - ? for neuron server
-  - CUDA/12.1.0 for odin/loki server
+  - g++ 12.1.1 verified (odin/loki server)
 - LAMMPS `23Jun2022` verified.
 - Modify CMakeLists.txt below
   - `project(lammps CXX)` -> `project(lammps CXX CUDA)`
@@ -28,8 +29,9 @@ cmake ../cmake -C ../cmake/presets/gcc.cmake \
 
 make -j8
 ```
-- If you compiled with SevenNet, follow the insturctions of SevenNet + LAMMPS and just add the flag above
-  - -D CMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'`
+- If you compiled with SevenNet, follow the insturctions of SevenNet + LAMMPS
+- and add this flag on the cmake command
+  - `-D CMAKE_PREFIX_PATH=$(python -c 'import torch;print(torch.utils.cmake_prefix_path')`
 
 Notes
 - `fmad=false` is essential to get precise figures. Be careful that the result value is correct.
@@ -39,8 +41,8 @@ Notes
   - 80 -> a100
   - 86 -> 3090ti, a5000
 - If there is a GPU for the node you are compiling, Cmake will find it, so CMAKE_CUDA_ARCHITECUTRES is unnecessary (maybe)
+- If there is no GPU in node compilng, CMake can cause errors.
 
 
 # To do
-- implement zero / zerom damping
 - implement without Unified memory
