@@ -29,7 +29,8 @@ cmake ../cmake -C ../cmake/presets/gcc.cmake \
 
 make -j8
 ```
-- If you compiled with SevenNet, follow the insturctions of SevenNet + LAMMPS and just add the flag above
+- If you compiled with SevenNet, follow the insturctions of SevenNet + LAMMPS
+- and add this flag on the cmake command
   - `-D CMAKE_PREFIX_PATH=$(python -c 'import torch;print(torch.utils.cmake_prefix_path')`
 
 Notes
