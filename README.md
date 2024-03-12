@@ -46,3 +46,7 @@ Notes
 
 # To do
 - implement without Unified memory
+
+# Cautions
+- It can be slower than the CPU with a small number of atoms.
+- The CUDA math library differs from C, which can lead to numerical errors.
