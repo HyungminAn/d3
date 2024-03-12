@@ -38,6 +38,7 @@ Notes
   - 70 -> v100
   - 80 -> a100
   - 86 -> 3090ti, a5000
+- If there is a GPU for the node you are compiling, Cmake will find it, so CMAKE_CUDA_ARCHITECUTRES is unnecessary (maybe)
 
 
 # To do
