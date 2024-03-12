@@ -1,17 +1,21 @@
 units           metal     # K, bar, ps, A
 box             tilt large
-newton on
 
 read_data coo
+
 variable        path_r0ab  string  "./r0ab.csv"
 variable        path_c6ab  string  "./d3_pars.csv"
 variable        cutoff_d3       equal   9000
 variable        cutoff_d3_CN    equal   1600
 
-pair_style hybrid/overlay d3 ${cutoff_d3} ${cutoff_d3_CN} bj
-pair_coeff * *  d3 ${path_r0ab} ${path_c6ab} pbe O C H
+#pair_style hybrid/overlay e3gnn d3 ${cutoff_d3} ${cutoff_d3_CN} d3_damp_bj
+pair_style hybrid/overlay d3 ${cutoff_d3} ${cutoff_d3_CN} d3_damp_bj
+#pair_coeff * * e3gnn /home/dambi3613/SevenNetModel/serial_MP.pt O C H
+pair_coeff * * d3 ${path_r0ab} ${path_c6ab} pbe O C H
 
 neigh_modify    every 1 delay 0 check yes page 10000000 one 1000000
 dump           1 all custom 10 dump.lammpstrj id type fx fy fz
+
+thermo 1
 
 run 24
