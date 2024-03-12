@@ -1822,23 +1822,23 @@ void PairD3::get_forces_without_dC6_bj_damping() {
     int threadsPerBlock = 128;
     int blocksPerGrid = (linij + threadsPerBlock - 1) / threadsPerBlock;
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
+    // cudaEvent_t start, stop;
+    // cudaEventCreate(&start);
+    // cudaEventCreate(&stop);
+    // cudaEventRecord(start);
 
     kernel_getForcesWithoutBJ<<<blocksPerGrid, threadsPerBlock>>>(
         linij, maxtau, s6, s8, a1_sqrt3, a2, r2_rthr, x, cuda_type, dc6i, cuda_r2r4, tau_idx_vdw, tau_vdw, rep_vdw, c6_ij_tot, dc6_iji_tot, dc6_ijj_tot, cuda_disp, f, sigma
     );
     cudaDeviceSynchronize();
 
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, start, stop);
-    printf("Time elapsed for get_forces_without_dC6_bj_damping: %f ms\n", milliseconds);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    // cudaEventRecord(stop);
+    // cudaEventSynchronize(stop);
+    // float milliseconds = 0;
+    // cudaEventElapsedTime(&milliseconds, start, stop);
+    // printf("Time elapsed for get_forces_without_dC6_bj_damping: %f ms\n", milliseconds);
+    // cudaEventDestroy(start);
+    // cudaEventDestroy(stop);
 
     cudaFree(cuda_type);
     cudaFree(cuda_r2r4);
