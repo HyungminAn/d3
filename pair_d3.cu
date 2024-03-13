@@ -15,7 +15,7 @@
    Contributing author: Hyungmin An (andynn@snu.ac.kr)
 ------------------------------------------------------------------------- */
 
-#include "pair_d3.cuh"
+#include "pair_d3.h"
 #include <cuda_runtime.h>
 
 using namespace LAMMPS_NS;
