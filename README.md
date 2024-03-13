@@ -10,7 +10,7 @@ The parallelization used is the same as openACC version.
 
 ### Compile CUDA D3 on LAMMPS
 Requirements
-- compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- Compiler supporting CUDA nvcc (g++ 12.1.1 tested)
 - LAMMPS (`23Jun2022` tested)
 
 My environment
@@ -42,9 +42,11 @@ My environment
   ```
 
 ### Compile CUDA D3 with SevenNet on LAMMPS
+The description below is simply a combination of the above explanation with the compilation of SevenNet.
+
 Requirements
-- libtorch (pre-cxx11 and cxx11 tested)
-- compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- Libtorch (If you have installed **PyTorch**, then libtorch is already installed)
+- Compiler supporting CUDA nvcc (g++ 12.1.1 tested)
 - LAMMPS (`23Jun2022` tested)
 
 My environment
@@ -68,7 +70,7 @@ My environment
     target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}")
     ```
 
-3. Enter command in the lammps directory
+3. Enter command in the lammps directory.
   ```
   mkdir build
   cd build
@@ -80,6 +82,9 @@ My environment
   -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61" \
   -D CMAKE_PREFIX_PATH=$(python -c "import torch;print(torch.utils.cmake_prefix_path)")
 
+  # CMAKE_PREFIX_PATH=$(python -c "import torch;print(torch.utils.cmake_prefix_path)") uses libtorch in the pytorch in your environment.
+  # If you intend to use a separately installed libtorch, you can simply specify its path directly. (pre-cxx11 and cxx11 tested)
+
   make -j8
   ```
 
@@ -90,8 +95,7 @@ My environment
   - 70 -> v100
   - 80 -> a100
   - 86 -> 3090ti, a5000
-- If there is a GPU on the node you are compiling, CMake will find it, so setting CMAKE_CUDA_ARCHITECTURES is unnecessary (maybe).
-- If there is no GPU in the node compiling, CMake can cause errors.
+- If there is no GPU on the node you are compling, CMake can cause errors. (maybe)
 
 ## To do
 - Implement without Unified Memory.
