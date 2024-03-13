@@ -1,59 +1,103 @@
-# D3
-LAMMPS implementation of [D3](https://doi.org/10.1063/1.3382344).   
+# D3 dispersion correction on LAMMPS with CUDA
 
-You can find the original FORTRAN code of [dftd3](https://www.chemie.uni-bonn.de/grimme/de/software/dft-d3).
+Only NVIDIA GPU supported.
 
-# How to use
-1. Put `pair_d3.cpp`, `pair_d3.h` into `lammps/src` directory and compile LAMMPS.   
-   To use OpenMP, the `-fopenmp` tag must be set.
+This is for avoiding collision between openACC and pyTorch.
 
-2. Write LAMMPS input scripts like below to use D3.
-```vim
-variable        path_r0ab  string  "r0ab.csv"
-variable        path_c6ab  string  "d3_pars.csv"
-variable        cutoff_d3       equal   9000
-variable        cutoff_d3_CN    equal   1600
-variable        damping_type    string  "d3_damp_bj"
-variable        functional_type   string   "pbe"
-variable        elem_list       string  "O C H"
+The parallelization used is the same as openACC version.
 
-pair_style      d3    ${cutoff_d3}  ${cutoff_d3_CN}  ${damping_type}
-pair_coeff * *  ${path_r0ab} ${path_c6ab} ${functional_type} ${elem_list}
-```
+## Installation
 
-`r0ab.csv` and `d3_pars.csv` files should exist to calculate d3 interactions (those files are in `lammps_test` folder).
+### Compile CUDA D3 on LAMMPS
+Requirements
+- compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- LAMMPS (`23Jun2022` tested)
 
-`cutoff_d3` and `cutoff_d3_CN` are *square* of cutoff radii for energy/force and coordination number, respectively.   
-Units are Bohr radius: 1 (Bohr radius) = 0.52917721 (Å)   
-(Default values are 9000 and 1600, respectively)
+My environment
+- Module: compiler/2022.1.0 mpi/2021.6.0 mkl/2022.1.0 CUDA/12.1.0 (odin/loki server)
 
-Available damping types: `d3_damp_zero`, `d3_damp_bj`, `d3_damp_zerom`, `d3_damp_bjm`   
-(Zero damping, Becke-Johnson damping and their modified versions, respectively)
+-----
+1. Copy `pair_d3.cu` and `pair_d3.h` into the lammps/src directory (not available with CPU version D3 `pair_d3.cpp`)
 
-3. Run your LAMMPS code.
+2. Configure `CMakeLists.txt` in the lammps/cmake directory
+  - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
+  - Add to the last line:
+    ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+    ```
 
-To use OpenMP version, you should set `OMP_NUM_THREADS` variable adequately to make full use of your CPU cores.
-```bash
-export OMP_NUM_THREADS=32
-lmp -in lammps.in
-```
-or
-```bash
-env OMP_NUM_THREADS=32 lmp -in lammps.in
-```
+3. Enter command in the lammps directory
+  ```
+  mkdir build
+  cd build
 
-# Note
-1. In [VASP DFT-D3](https://www.vasp.at/wiki/index.php/DFT-D3) page, `VDW_RADIUS` and `VDW_CNRADIUS` are `50.2` and `20.0`, respectively (units are Å).   
-But you can check the default value of these in OUTCAR: `50.2022` and `21.1671`, which is same to default values of this code.   
-To check this by yourself, run VASP with D3 using zero damping (BJ does not give such log).
+  cmake ../cmake -C ../cmake/presets/gcc.cmake \
+  -D BUILD_MPI=no -D BUILD_OMP=no \
+  -D CMAKE_CXX_FLAGS="-O3" \
+  -D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
+  -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61"
 
-# Features
-- selective/no periodic boundary condition : implemented   
-  (But only PBC/noPBC can be checked through original FORTRAN code; selective PBC cannot)
-- 3-body term, n > 8 term : not implemented   
-  (Same condition to VASP)
+  make -j8
+  ```
 
-# Versions
-1. OpenMP : current state of the art
-2. MPI : in future plan
-3. Using accelerators
+### Compile CUDA D3 with SevenNet on LAMMPS
+Requirements
+- libtorch (pre-cxx11 and cxx11 tested)
+- compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- LAMMPS (`23Jun2022` tested)
+
+My environment
+- Module: compiler/2022.1.0 mpi/2021.6.0 mkl/2022.1.0 CUDA/12.1.0 (odin/loki server)
+- Conda: pub_sevenn (SevenNet uses libtorch of this env)
+
+-----
+1. Copy `pair_d3.cu` and `pair_d3.h` into the lammps/src directory (not available with CPU version D3 `pair_d3.cpp`)
+
+
+2. Configure `CMakeLists.txt` in the lammps/cmake directory
+  - Change: `set(CMAKE_CXX_STANDARD 11)` -> `set(CMAKE_CXX_STANDARD 14)`
+  - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
+  - Add to the last line:
+    ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+
+    find_package(Torch REQUIRED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+    target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}")
+    ```
+
+3. Enter command in the lammps directory
+  ```
+  mkdir build
+  cd build
+
+  cmake ../cmake -C ../cmake/presets/gcc.cmake \
+  -D BUILD_MPI=no -D BUILD_OMP=no \
+  -D CMAKE_CXX_FLAGS="-O3" \
+  -D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
+  -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61" \
+  -D CMAKE_PREFIX_PATH=$(python -c "import torch;print(torch.utils.cmake_prefix_path)")
+
+  make -j8
+  ```
+
+### Notes
+- `fmad=false` is essential to obtain precise figures. Be careful to ensure that the result value is correct.
+- CMAKE_CUDA_ARCHITECUTRES lists
+  - 61 -> Titan X, P6000
+  - 70 -> v100
+  - 80 -> a100
+  - 86 -> 3090ti, a5000
+- If there is a GPU on the node you are compiling, CMake will find it, so setting CMAKE_CUDA_ARCHITECTURES is unnecessary (maybe).
+- If there is no GPU in the node compiling, CMake can cause errors.
+
+## To do
+- Implement without Unified Memory.
+- Unfix the threadsPerBlock=128.
+- Achieve more effective parallelism.
+
+## Cautions
+- It can be slower than the CPU with a small number of atoms.
+- The CUDA math library differs from C, which can lead to numerical errors.
