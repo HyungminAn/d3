@@ -20,9 +20,12 @@
 
 using namespace LAMMPS_NS;
 
-// linij and idx_linij -> limit=46340 atoms
+/* ------- Math functions for CUDA compatibility ------- */
+
+// resolve triangular loop -> limit=46340 atoms (unsigned int?)
+// static_cast or floor function or implicit. static_cast widely used? speed check.
 inline __host__ __device__ void ij_at_linij(int linij, int &i, int &j) {
-    i = (sqrtf(1 + 8.0f * linij) - 1) / 2; // static_cast or floor function or implicit
+    i = (sqrtf(1 + 8.0f * linij) - 1) / 2;
     j = linij - i * (i + 1) / 2;
 }
 
@@ -32,6 +35,7 @@ inline __host__ __device__ double lensq3(const double *v)
   return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
 }
 
+/* ------- Math functions for CUDA compatibility ------- */
 
 /* ----------------------------------------------------------------------
    Constructor (Required)
@@ -60,9 +64,12 @@ PairD3::~PairD3() {
         cudaFree(r2r4);
         cudaFree(rcov);
         cudaFree(mxc);
-        for (int i = 0; i < np1; i++) { cudaFree(setflag[i]); }; cudaFree(setflag);
-        for (int i = 0; i < np1; i++) { cudaFree(cutsq[i]); }; cudaFree(cutsq);
-        for (int i = 0; i < np1; i++) { cudaFree(r0ab[i]); }; cudaFree(r0ab);
+        for (int i = 0; i < np1; i++) { cudaFree(setflag[i]); }; 
+        cudaFree(setflag);
+        for (int i = 0; i < np1; i++) { cudaFree(cutsq[i]); }; 
+        cudaFree(cutsq);
+        for (int i = 0; i < np1; i++) { cudaFree(r0ab[i]); }; 
+        cudaFree(r0ab);
 
         for (int i = 0; i < np1; i++) {
             for (int j = 0; j < np1; j++) {
@@ -84,9 +91,12 @@ PairD3::~PairD3() {
         cudaFree(cn);
         cudaFree(dc6i);
 
-        for (int i = 0; i < n; i++) { cudaFree(x[i]); }; cudaFree(x);
-        for (int i = 0; i < n; i++) { cudaFree(f[i]); }; cudaFree(f);
-        for (int i = 0; i < 3; i++) { cudaFree(sigma[i]); }; cudaFree(sigma);
+        for (int i = 0; i < n; i++) { cudaFree(x[i]); }; 
+        cudaFree(x);
+        for (int i = 0; i < n; i++) { cudaFree(f[i]); }; 
+        cudaFree(f);
+        for (int i = 0; i < 3; i++) { cudaFree(sigma[i]); }; 
+        cudaFree(sigma);
 
         cudaFree(dc6_iji_tot);
         cudaFree(dc6_ijj_tot);
@@ -895,6 +905,13 @@ void PairD3::set_lattice_vectors() {
     lat_v_3[1] =                yz / AU_TO_ANG;
     lat_v_3[2] = (boxzhi - boxzlo) / AU_TO_ANG;
 
+    int vdwrx_save = 2 * rep_vdw[0] + 1;
+    int vdwry_save = 2 * rep_vdw[1] + 1;
+    int vdwrz_save = 2 * rep_vdw[2] + 1;
+    int cnrx_save = 2 * rep_cn[0] + 1;
+    int cnry_save = 2 * rep_cn[1] + 1;
+    int cnrz_save = 2 * rep_cn[2] + 1;
+
     set_lattice_repetition_criteria(rthr, rep_vdw);
     set_lattice_repetition_criteria(cn_thr, rep_cn);
 
@@ -904,9 +921,9 @@ void PairD3::set_lattice_vectors() {
     int tau_loop_size_vdw = vdw_range_x * vdw_range_y * vdw_range_z * 3;
     if (tau_loop_size_vdw != tau_idx_vdw_total_size) {
         if (tau_idx_vdw != nullptr) {
-            for (int i = 0; i < vdw_range_x; i++) {
-                for (int j = 0; j < vdw_range_y; j++) {
-                    for (int k = 0; k < vdw_range_z; k++) {
+            for (int i = 0; i < vdwrx_save; i++) {
+                for (int j = 0; j < vdwry_save; j++) {
+                    for (int k = 0; k < vdwrz_save; k++) {
                         cudaFree(tau_vdw[i][j][k]);
                     }
                     cudaFree(tau_vdw[i][j]);
@@ -927,7 +944,7 @@ void PairD3::set_lattice_vectors() {
                 }
             }
         }
-        cudaMallocManaged(&tau_idx_vdw, tau_idx_vdw_total_size * sizeof(double));
+        cudaMallocManaged(&tau_idx_vdw, tau_idx_vdw_total_size * sizeof(int));
     }
 
     int cn_range_x  = 2 * rep_cn[0] + 1;
@@ -936,9 +953,9 @@ void PairD3::set_lattice_vectors() {
     int tau_loop_size_cn = cn_range_x * cn_range_y * cn_range_z * 3;
     if (tau_loop_size_cn != tau_idx_cn_total_size) {
         if (tau_idx_cn != nullptr) {
-            for (int i = 0; i < cn_range_x; i++) {
-                for (int j = 0; j < cn_range_y; j++) {
-                    for (int k = 0; k < cn_range_z; k++) {
+            for (int i = 0; i < cnrx_save; i++) {
+                for (int j = 0; j < cnry_save; j++) {
+                    for (int k = 0; k < cnrz_save; k++) {
                         cudaFree(tau_cn[i][j][k]);
                     }
                     cudaFree(tau_cn[i][j]);
@@ -959,7 +976,7 @@ void PairD3::set_lattice_vectors() {
                 }
             }
         }
-        cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(double));
+        cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(int));
     }
 
 }
@@ -1084,9 +1101,9 @@ void PairD3::reallocate_arrays() {
 
     /* -------------- Destroy previous arrays -------------- */
 
-    cudaFree(cn); for (int i = 0; i < n; i++) { cudaFree(x[i]); }
+    cudaFree(cn); for (int i = 0; i < n_save; i++) { cudaFree(x[i]); }
     cudaFree(x);
-    cudaFree(dc6i); for (int i = 0; i < n; i++) { cudaFree(f[i]); }
+    cudaFree(dc6i); for (int i = 0; i < n_save; i++) { cudaFree(f[i]); }
     cudaFree(f);
     cudaFree(dc6_iji_tot);
     cudaFree(dc6_ijj_tot);
