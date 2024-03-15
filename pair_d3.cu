@@ -16,6 +16,7 @@
 ------------------------------------------------------------------------- */
 
 #include "pair_d3.h"
+#include <cuda_runtime.h>
 
 using namespace LAMMPS_NS;
 

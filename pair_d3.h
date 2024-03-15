@@ -28,7 +28,6 @@ PairStyle(d3, PairD3)
 #include <stdlib.h>
 #include <unordered_map>
 #include <omp.h>
-#include <cuda_runtime.h>
 #include "pair.h"
 #include "memory.h"
 #include "atom.h"
