@@ -1363,7 +1363,7 @@ __global__ void kernel_getForcesWithoutZero(
                 disp_local -= dc6_rest * c6;
                 const double dc6iji = dc6_iji_tot[iter];
                 const double dc6ijj = dc6_ijj_tot[iter];
-                atomicAdd(&dc6i[iat], dc6_rest * dc6iji * 2);
+                atomicAdd(&dc6i[iat], dc6_rest * (dc6iji + dc6ijj));
             }
             
             else {
@@ -1679,7 +1679,7 @@ __global__ void kernel_getForcesWithoutBJ(
                 disp_local -= dc6_rest * c6;
                 const double dc6iji = dc6_iji_tot[iter];
                 const double dc6ijj = dc6_ijj_tot[iter];
-                atomicAdd(&dc6i[iat], dc6_rest * dc6iji * 2);
+                atomicAdd(&dc6i[iat], dc6_rest * (dc6iji + dc6ijj));
             }
             
             else {
