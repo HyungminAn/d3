@@ -43,7 +43,8 @@ env OMP_NUM_THREADS=32 lmp -in lammps.in
 ```
 
 # To use `pair_d3` with LAMMPS `hybrid`, `hybrid/overlay`
-In case you are doing calculation where pressure also affects simulation (ex. NPT simulation, ...):   
+In case you are doing calculation where pressure also affects simulation   
+(ex. NPT molecular dynamics simulation, geometry optimization with cell relax...):   
 ***you must add `compute (name_of_your_compute) all pressure NULL virial pair/hybrid d3` to your lammps input script.***
 
 In D3, the result of computation (energy, force, stress) will be updated to actual variables in `update` function:
