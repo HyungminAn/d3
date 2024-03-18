@@ -22,6 +22,11 @@ My environment
 2. Configure `CMakeLists.txt` in the lammps/cmake directory
   - Change: `project(lammps CXX)` -> `project(lammps CXX CUDA)`
   - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
+  - Add to the last line:
+    ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+    ```
 
 3. Enter command in the lammps directory
   ```
@@ -34,7 +39,7 @@ My environment
   -D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
   -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61"
 
-  cmake --build . -j4
+  make -j8
   ```
 
 ### Compile CUDA D3 with SevenNet on LAMMPS
@@ -59,6 +64,9 @@ My environment
   - Change: `set(CMAKE_CXX_STANDARD 11)` -> `set(CMAKE_CXX_STANDARD 14)`
   - Add to the last line:
     ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+  
     find_package(Torch REQUIRED)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
     target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}")
@@ -79,7 +87,7 @@ My environment
   # CMAKE_PREFIX_PATH=$(python -c "import torch;print(torch.utils.cmake_prefix_path)") uses libtorch in the pytorch in your environment.
   # If you intend to use a separately installed libtorch, you can simply specify its path directly. (pre-cxx11 and cxx11 tested)
 
-  cmake --build . -j4
+  make -j8
   ```
 
 ### Notes
