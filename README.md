@@ -42,6 +42,54 @@ or
 env OMP_NUM_THREADS=32 lmp -in lammps.in
 ```
 
+# To use `pair_d3` with LAMMPS `hybrid`, `hybrid/overlay`
+In case you are doing calculation where pressure also affects simulation (ex. NPT simulation, ...):   
+***you must add `compute (name_of_your_compute) all pressure NULL virial pair/hybrid d3` to your lammps input script.***
+
+In D3, the result of computation (energy, force, stress) will be updated to actual variables in `update` function:
+```cpp
+void PairD3::update(int eflag, int vflag) {
+    int n = atom->natoms;
+    // Energy update
+    if (eflag) { eng_vdwl += disp_total * AU_TO_EV; }
+
+    double** f_local = atom->f;       // Local force of atoms
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < 3; j++) {
+            f_local[i][j] += f[i][j] * AU_TO_EV / AU_TO_ANG;
+        }
+    }
+
+    // Stress update
+    if (vflag) {
+        virial[0] += sigma[0][0] * AU_TO_EV;
+        virial[1] += sigma[1][1] * AU_TO_EV;
+        virial[2] += sigma[2][2] * AU_TO_EV;
+        virial[3] += sigma[0][1] * AU_TO_EV;
+        virial[4] += sigma[0][2] * AU_TO_EV;
+        virial[5] += sigma[1][2] * AU_TO_EV;
+    }
+}
+```
+In this code, virial stresses are updated only when `vflag` turned on.  
+However, the `pair_hybrid.cpp` in `lammps/src` explains how virial stresses are calculated in hybrid style:  
+```cpp
+/* ----------------------------------------------------------------------
+  call each sub-style's compute() or compute_outer() function
+  accumulate sub-style global/peratom energy/virial in hybrid
+  for global vflag = VIRIAL_PAIR:
+    each sub-style computes own virial[6]
+    sum sub-style virial[6] to hybrid's virial[6]
+  for global vflag = VIRIAL_FDOTR:
+    call sub-style with adjusted vflag to prevent it calling
+      virial_fdotr_compute()
+    hybrid calls virial_fdotr_compute() on final accumulated f
+------------------------------------------------------------------------- */
+```
+Here, `compute pressure` with `pair/hybrid` will switch on the `VIRIAL_PAIR` style, so the virial stress will accumulated to `hybrid/overlay`.   
+Otherwise, `VIRIAL_FDOTR` may be turned on (which may skip the `vflag` part in `update` function; is it default?) and will give some errorneous value (computed from accumulated forces).   
+※ The `pair_style` after `compute pressure` can be any pair_style; only the `VIRIAL_PAIR` matters in this case.
+
 # Note
 1. In [VASP DFT-D3](https://www.vasp.at/wiki/index.php/DFT-D3) page, `VDW_RADIUS` and `VDW_CNRADIUS` are `50.2` and `20.0`, respectively (units are Å).   
 But you can check the default value of these in OUTCAR: `50.2022` and `21.1671`, which is same to default values of this code.   
