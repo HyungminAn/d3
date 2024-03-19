@@ -102,7 +102,7 @@ My environment
 ## To do
 - Implement without Unified Memory.
 - Unfix the threadsPerBlock=128.
-- Achieve more effective parallelism.
+- Unroll the repetition loop k (for small number of atoms)
 
 ## Cautions
 - It can be slower than the CPU with a small number of atoms.
