@@ -74,7 +74,7 @@ namespace LAMMPS_NS {
 
 
         /* ------- Lattice information ------- */
-        void set_lattice_repetition_criteria(double, int*);
+        void set_lattice_repetition_criteria(float, int*);
         void set_lattice_vectors();
         /* ------- Lattice information ------- */
 
@@ -112,28 +112,28 @@ namespace LAMMPS_NS {
         static constexpr double AU_TO_ANG = 0.52917726; // conversion factors (atomic unit --> angstrom)
         static constexpr double AU_TO_EV = 27.21138505; // conversion factors (atomic unit --> eV)
 
-        static constexpr double K1 = 16.0;              // global ad hoc parameters
-        static constexpr double K3 = -4.0;              // global ad hoc parameters
+        static constexpr float K1 = 16.0;              // global ad hoc parameters
+        static constexpr float K3 = -4.0;              // global ad hoc parameters
         /*--------- Constants ---------*/
 
 
         /*--------- Parameters to read ---------*/
         int damping_type;
-        double* r2r4 = nullptr;            // scale r4/r2 values of the atoms by sqrt(Z)
-        double* rcov = nullptr;            // covalent radii
+        float* r2r4 = nullptr;             // scale r4/r2 values of the atoms by sqrt(Z)
+        float* rcov = nullptr;             // covalent radii
         int* mxc = nullptr;                // How large the grid for c6 interpolation
-        double** r0ab = nullptr;           // cut-off radii for all element pairs
-        double***** c6ab = nullptr;        // C6 for all element pairs
-        double rthr;              // R^2 distance to cutoff for C calculation
-        double cn_thr;            // R^2 distance to cutoff for CN_calculation
-        double s6, s8, s18, rs6, rs8, rs18, alp, alp6, alp8, a1, a2; // parameters for D3
+        float** r0ab = nullptr;            // cut-off radii for all element pairs
+        float***** c6ab = nullptr;         // C6 for all element pairs
+        float rthr;              // R^2 distance to cutoff for C calculation
+        float cn_thr;            // R^2 distance to cutoff for CN_calculation
+        float s6, s8, s18, rs6, rs8, rs18, alp, alp6, alp8, a1, a2; // parameters for D3
         /*--------- Parameters to read ---------*/
 
 
         /*--------- Lattice related values ---------*/
-        double* lat_v_1 = nullptr;          // lattice coordination vector
-        double* lat_v_2 = nullptr;          // lattice coordination vector
-        double* lat_v_3 = nullptr;          // lattice coordination vector
+        double* lat_v_1 = nullptr;           // lattice coordination vector
+        double* lat_v_2 = nullptr;           // lattice coordination vector
+        double* lat_v_3 = nullptr;           // lattice coordination vector
         int* rep_vdw = nullptr;             // repetition of cell for calculating D3
         int* rep_cn = nullptr;              // repetition of cell for calculating
                                             // coordination number
@@ -143,28 +143,28 @@ namespace LAMMPS_NS {
 
         /*--------- Per-atom values/arrays ---------*/
         double* cn = nullptr;               // Coordination numbers
-        double** x = nullptr;               // Positions
+        float** x = nullptr;                // Positions
         double** f = nullptr;               // Forces
         double* dc6i = nullptr;             // dC6i(iat) saves dE_dsp/dCN(iat)
         /*--------- Per-atom values/arrays ---------*/
 
 
         /*--------- Per-pair values/arrays ---------*/
-        double* c6_ij_tot = nullptr;
-        double* dc6_iji_tot = nullptr;
-        double* dc6_ijj_tot = nullptr;
+        float* c6_ij_tot = nullptr;
+        float* dc6_iji_tot = nullptr;
+        float* dc6_ijj_tot = nullptr;
         /*--------- Per-pair values/arrays ---------*/
 
 
         /*---------- Global values ---------*/
         int n_save;                         // to check whether the number of atoms has changed
-        double disp_total;                  // Dispersion energy
+        float disp_total;                   // Dispersion energy
         /*---------- Global values ---------*/
 
 
         /*--------- For loop over tau (translation of cell) ---------*/
-        double**** tau_vdw = nullptr;
-        double**** tau_cn = nullptr;
+        float**** tau_vdw = nullptr;
+        float**** tau_cn = nullptr;
         int* tau_idx_vdw = nullptr;
         int* tau_idx_cn = nullptr;
         int tau_idx_vdw_total_size;

@@ -73,7 +73,7 @@ inline __host__ __device__ void ij_at_linij(int linij, int &i, int &j) {
     j = linij - i * (i + 1) / 2;
 } // unroll the triangular loop
 
-inline __host__ __device__ double lensq3(const double *v)
+inline __host__ __device__ float lensq3(const float *v)
 {
   return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
 } // from MathExtra::lensq3
@@ -192,34 +192,34 @@ void PairD3::allocate() {
     n_save = n;
 
     cudaMallocManaged(&setflag, np1 * sizeof(int*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&setflag[i], np1 * sizeof(int)); }
-    cudaMallocManaged(&cutsq, np1 * sizeof(double*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&cutsq[i], np1 * sizeof(double)); }
-    cudaMallocManaged(&r2r4, np1 * sizeof(double));
-    cudaMallocManaged(&rcov, np1 * sizeof(double));
+    cudaMallocManaged(&cutsq, np1 * sizeof(float*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&cutsq[i], np1 * sizeof(float)); }
+    cudaMallocManaged(&r2r4, np1 * sizeof(float));
+    cudaMallocManaged(&rcov, np1 * sizeof(float));
     cudaMallocManaged(&mxc, np1 * sizeof(int));
-    cudaMallocManaged(&r0ab, np1 * sizeof(double*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&r0ab[i], np1 * sizeof(double)); }
-    cudaMallocManaged(&c6ab, np1 * sizeof(double****));
+    cudaMallocManaged(&r0ab, np1 * sizeof(float*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&r0ab[i], np1 * sizeof(float)); }
+    cudaMallocManaged(&c6ab, np1 * sizeof(float****));
     for (int i = 0; i < np1; i++) {
-        cudaMallocManaged(&c6ab[i], np1 * sizeof(double***));
+        cudaMallocManaged(&c6ab[i], np1 * sizeof(float***));
         for (int j = 0; j < np1; j++) {
-            cudaMallocManaged(&c6ab[i][j], MAXC * sizeof(double**));
+            cudaMallocManaged(&c6ab[i][j], MAXC * sizeof(float**));
             for (int k = 0; k < MAXC; k++) {
-                cudaMallocManaged(&c6ab[i][j][k], MAXC * sizeof(double*));
+                cudaMallocManaged(&c6ab[i][j][k], MAXC * sizeof(float*));
                 for (int l = 0; l < MAXC; l++) {
-                    cudaMallocManaged(&c6ab[i][j][k][l], 3 * sizeof(double));
+                    cudaMallocManaged(&c6ab[i][j][k][l], 3 * sizeof(float));
                 }
             }
         }
     }
 
-    cudaMallocManaged(&lat_v_1, 3 * sizeof(double));
-    cudaMallocManaged(&lat_v_2, 3 * sizeof(double));
-    cudaMallocManaged(&lat_v_3, 3 * sizeof(double));
+    cudaMallocManaged(&lat_v_1, 3 * sizeof(float));
+    cudaMallocManaged(&lat_v_2, 3 * sizeof(float));
+    cudaMallocManaged(&lat_v_3, 3 * sizeof(float));
     cudaMallocManaged(&rep_vdw, 3 * sizeof(int));
     cudaMallocManaged(&rep_cn,  3 * sizeof(int));
     cudaMallocManaged(&sigma,   3 * sizeof(double*)); for (int i = 0; i < 3; i++) { cudaMallocManaged(&sigma[i], 3 * sizeof(double)); }
 
     cudaMallocManaged(&cn, n * sizeof(double));
-    cudaMallocManaged(&x, n * sizeof(double*)); for (int i = 0; i < n; i++) { cudaMallocManaged(&x[i], 3 * sizeof(double)); }
+    cudaMallocManaged(&x, n * sizeof(float*)); for (int i = 0; i < n; i++) { cudaMallocManaged(&x[i], 3 * sizeof(float)); }
     cudaMallocManaged(&dc6i, n * sizeof(double));
     cudaMallocManaged(&f, n * sizeof(double*)); for (int i = 0; i < n; i++) { cudaMallocManaged(&f[i], 3 * sizeof(double)); }
 
@@ -246,9 +246,9 @@ void PairD3::allocate() {
     }
 
     int n_ij_combination = n * (n + 1) / 2;
-    cudaMallocManaged(&dc6_iji_tot, n_ij_combination * sizeof(double));
-    cudaMallocManaged(&dc6_ijj_tot, n_ij_combination * sizeof(double));
-    cudaMallocManaged(&c6_ij_tot,   n_ij_combination * sizeof(double));
+    cudaMallocManaged(&dc6_iji_tot, n_ij_combination * sizeof(float));
+    cudaMallocManaged(&dc6_ijj_tot, n_ij_combination * sizeof(float));
+    cudaMallocManaged(&c6_ij_tot,   n_ij_combination * sizeof(float));
 
     cudaMallocManaged(&atomtype, n * sizeof(int));
     cudaMemcpy(atomtype, atom->type, n * sizeof(int), cudaMemcpyHostToDevice);
@@ -834,9 +834,9 @@ void PairD3::coeff(int narg, char **arg) {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_dC6_dCNij(
-    int maxij, double K3,
-    double *cn, int *mxc, double *****c6ab, int *type,
-    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot
+    int maxij, float K3,
+    double *cn, int *mxc, float *****c6ab, int *type,
+    float *c6_ij_tot, float *dc6_iji_tot, float *dc6_ijj_tot
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -847,41 +847,41 @@ __global__ void kernel_get_dC6_dCNij(
         const int atomtype_i = type[iat];
         const int atomtype_j = type[jat];
 
-        const double cni = cn[iat];
+        const float cni = cn[iat];
         const int mxci = mxc[atomtype_i];
-        const double cnj = cn[jat];
+        const float cnj = cn[jat];
         const int mxcj = mxc[atomtype_j];
 
-        double c6mem = -1e99;
-        double r_save = 9999.0;
-        double numerator = 0.0;
-        double denominator = 0.0;
-        double d_numerator_i = 0.0;
-        double d_denominator_i = 0.0;
-        double d_numerator_j = 0.0;
-        double d_denominator_j = 0.0;
+        float c6mem = -1e99f;
+        float r_save = 9999.0f;
+        float numerator = 0.0f;
+        float denominator = 0.0f;
+        float d_numerator_i = 0.0f;
+        float d_denominator_i = 0.0f;
+        float d_numerator_j = 0.0f;
+        float d_denominator_j = 0.0f;
 
         for (int a = 0; a < mxci; a++) {
             for (int b = 0; b < mxcj; b++) {
-                const double c6ref = c6ab[atomtype_i][atomtype_j][a][b][0];
+                const float c6ref = c6ab[atomtype_i][atomtype_j][a][b][0];
 
                 if (c6ref > 0.0f) {
-                    const double cn_refi = c6ab[atomtype_i][atomtype_j][a][b][1];
-                    const double cn_refj = c6ab[atomtype_i][atomtype_j][a][b][2];
+                    const float cn_refi = c6ab[atomtype_i][atomtype_j][a][b][1];
+                    const float cn_refj = c6ab[atomtype_i][atomtype_j][a][b][2];
 
-                    const double r = (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
+                    const float r = (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
                     if (r < r_save) {
                         r_save = r;
                         c6mem = c6ref;
                     }
 
-                    double expterm = exp(K3* r);
+                    float expterm = expf(K3* r);
                     numerator += c6ref * expterm;
                     denominator += expterm;
 
-                    expterm *= 2.0 * K3;
+                    expterm *= 2.0f * K3;
 
-                    double term = expterm * (cni - cn_refi);
+                    float term = expterm * (cni - cn_refi);
                     d_numerator_i += c6ref * term;
                     d_denominator_i += term;
 
@@ -892,16 +892,16 @@ __global__ void kernel_get_dC6_dCNij(
             }
         }
 
-        if (denominator > 1e-99) {
-            const double denominator_rc = 1.0 / denominator;
+        if (denominator > 1e-99f) {
+            const float denominator_rc = 1.0f / denominator;
             c6_ij_tot[iter] = numerator * denominator_rc;
             dc6_iji_tot[iter] = ((d_numerator_i * denominator) - (d_denominator_i * numerator)) * (denominator_rc * denominator_rc);
             dc6_ijj_tot[iter] = ((d_numerator_j * denominator) - (d_denominator_j * numerator)) * (denominator_rc * denominator_rc);
         }
         else {
             c6_ij_tot[iter] = c6mem;
-            dc6_iji_tot[iter] = 0.0;
-            dc6_ijj_tot[iter] = 0.0;
+            dc6_iji_tot[iter] = 0.0f;
+            dc6_ijj_tot[iter] = 0.0f;
         }
     }
 }
@@ -985,13 +985,13 @@ void PairD3::set_lattice_vectors() {
             cudaFree(tau_idx_vdw);
         }
         tau_idx_vdw_total_size = tau_loop_size_vdw;
-        cudaMallocManaged(&tau_vdw, vdw_range_x * sizeof(double***));
+        cudaMallocManaged(&tau_vdw, vdw_range_x * sizeof(float***));
         for (int i = 0; i < vdw_range_x; i++) {
-            cudaMallocManaged(&tau_vdw[i], vdw_range_y * sizeof(double**));
+            cudaMallocManaged(&tau_vdw[i], vdw_range_y * sizeof(float**));
             for (int j = 0; j < vdw_range_y; j++) {
-                cudaMallocManaged(&tau_vdw[i][j], vdw_range_z * sizeof(double*));
+                cudaMallocManaged(&tau_vdw[i][j], vdw_range_z * sizeof(float*));
                 for (int k = 0; k < vdw_range_z; k++) {
-                    cudaMallocManaged(&tau_vdw[i][j][k], 3 * sizeof(double));
+                    cudaMallocManaged(&tau_vdw[i][j][k], 3 * sizeof(float));
                 }
             }
         }
@@ -1017,13 +1017,13 @@ void PairD3::set_lattice_vectors() {
             cudaFree(tau_idx_cn);
         }
         tau_idx_cn_total_size = tau_loop_size_cn;
-        cudaMallocManaged(&tau_cn, cn_range_x * sizeof(double***));
+        cudaMallocManaged(&tau_cn, cn_range_x * sizeof(float***));
         for (int i = 0; i < cn_range_x; i++) {
-            cudaMallocManaged(&tau_cn[i], cn_range_y * sizeof(double**));
+            cudaMallocManaged(&tau_cn[i], cn_range_y * sizeof(float**));
             for (int j = 0; j < cn_range_y; j++) {
-                cudaMallocManaged(&tau_cn[i][j], cn_range_z * sizeof(double*));
+                cudaMallocManaged(&tau_cn[i][j], cn_range_z * sizeof(float*));
                 for (int k = 0; k < cn_range_z; k++) {
-                    cudaMallocManaged(&tau_cn[i][j][k], 3 * sizeof(double));
+                    cudaMallocManaged(&tau_cn[i][j][k], 3 * sizeof(float));
                 }
             }
         }
@@ -1043,7 +1043,7 @@ void PairD3::set_lattice_vectors() {
    corresponding cross product vector.
 ------------------------------------------------------------------------- */
 
-void PairD3::set_lattice_repetition_criteria(double r_threshold, int* rep_v) {
+void PairD3::set_lattice_repetition_criteria(float r_threshold, int* rep_v) {
     double r_cutoff = sqrt(r_threshold);
     double lat_cp_12[3], lat_cp_23[3], lat_cp_31[3];
     double cos_value;
@@ -1069,8 +1069,8 @@ void PairD3::set_lattice_repetition_criteria(double r_threshold, int* rep_v) {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_coordination_number(
-    int maxij, int maxtau, double cn_thr, double K1,
-    double *rcov, int *rep_cn, double ****tau_cn, int *tau_idx_cn, int *type, double **x,
+    int maxij, int maxtau, float cn_thr, float K1,
+    float *rcov, int *rep_cn, float ****tau_cn, int *tau_idx_cn, int *type, float **x,
     double *cn
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1079,22 +1079,22 @@ __global__ void kernel_get_coordination_number(
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
-        double cn_local = 0.0;
+        float cn_local = 0.0f;
 
         if (iat == jat) {
-            const double rcov_sum = rcov[type[iat]] * 2.0;
+            const float rcov_sum = rcov[type[iat]] * 2.0f;
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_cn[k-2];
                 const int idx2 = tau_idx_cn[k-1];
                 const int idx3 = tau_idx_cn[k];
                 if (idx1 == rep_cn[0] && idx2 == rep_cn[1] && idx3 == rep_cn[2]) { continue; }
-                const double rx = tau_cn[idx1][idx2][idx3][0];
-                const double ry = tau_cn[idx1][idx2][idx3][1];
-                const double rz = tau_cn[idx1][idx2][idx3][2];
-                const double r2 = rx * rx + ry * ry + rz * rz;
+                const float rx = tau_cn[idx1][idx2][idx3][0];
+                const float ry = tau_cn[idx1][idx2][idx3][1];
+                const float rz = tau_cn[idx1][idx2][idx3][2];
+                const float r2 = rx * rx + ry * ry + rz * rz;
                 if (r2 <= cn_thr) {
-                    const double r_rc = rsqrt(r2);
-                    const double damp = 1.0 / (1.0 + exp(-K1 * ((rcov_sum * r_rc) - 1.0)));
+                    const float r_rc = rsqrtf(r2);
+                    const float damp = fdividef(1.0f, (1.0f + expf(-K1 * ((rcov_sum * r_rc) - 1.0f))));
                     cn_local += damp;
                 }
             }
@@ -1102,18 +1102,18 @@ __global__ void kernel_get_coordination_number(
         }
 
         else {
-            const double rcov_sum = rcov[type[iat]] + rcov[type[jat]];
+            const float rcov_sum = rcov[type[iat]] + rcov[type[jat]];
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_cn[k-2];
                 const int idx2 = tau_idx_cn[k-1];
                 const int idx3 = tau_idx_cn[k];
-                const double rx = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
-                const double ry = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
-                const double rz = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
-                const double r2 = rx * rx + ry * ry + rz * rz;
+                const float rx = x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0];
+                const float ry = x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1];
+                const float rz = x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2];
+                const float r2 = rx * rx + ry * ry + rz * rz;
                 if (r2 <= cn_thr) {
-                    const double r_rc = rsqrt(r2);
-                    const double damp = 1.0 / (1.0 + exp(-K1 * ((rcov_sum * r_rc) - 1.0)));
+                    const float r_rc = rsqrtf(r2);
+                    const float damp = fdividef(1.0f, (1.0f + expf(-K1 * ((rcov_sum * r_rc) - 1.0f))));
                     cn_local += damp;
                 }
             }
@@ -1174,16 +1174,16 @@ void PairD3::reallocate_arrays() {
     n_save = n;
 
     cudaMallocManaged(&cn, n * sizeof(double));
-    cudaMallocManaged(&x, n * sizeof(double*)); for (int i = 0; i < n; i++) { cudaMallocManaged(&x[i], 3 * sizeof(double)); }
+    cudaMallocManaged(&x, n * sizeof(float*)); for (int i = 0; i < n; i++) { cudaMallocManaged(&x[i], 3 * sizeof(float)); }
     cudaMallocManaged(&dc6i, n * sizeof(double));
     cudaMallocManaged(&f, n * sizeof(double*)); for (int i = 0; i < n; i++) { cudaMallocManaged(&f[i], 3 * sizeof(double)); }
 
     set_lattice_vectors();
 
     int n_ij_combination = n * (n + 1) / 2;
-    cudaMallocManaged(&dc6_iji_tot, n_ij_combination * sizeof(double));
-    cudaMallocManaged(&dc6_ijj_tot, n_ij_combination * sizeof(double));
-    cudaMallocManaged(&c6_ij_tot,   n_ij_combination * sizeof(double));
+    cudaMallocManaged(&dc6_iji_tot, n_ij_combination * sizeof(float));
+    cudaMallocManaged(&dc6_ijj_tot, n_ij_combination * sizeof(float));
+    cudaMallocManaged(&c6_ij_tot,   n_ij_combination * sizeof(float));
 
     cudaMallocManaged(&atomtype, n * sizeof(int));
     cudaMemcpy(atomtype, atom->type, n * sizeof(int), cudaMemcpyHostToDevice);
@@ -1292,55 +1292,55 @@ void PairD3::precalculate_tau_array() {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_forces_without_dC6_zero_damping(
-    int maxij, int maxtau, double rthr, double s6, double s8, double a1, double a2, double alp6, double alp8,
-    double *r2r4, double **r0ab, int *rep_vdw, double ****tau_vdw, int *tau_idx_vdw, int *type, double **x,
-    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot,
+    int maxij, int maxtau, float rthr, float s6, float s8, float a1, float a2, float alp6, float alp8,
+    float *r2r4, float **r0ab, int *rep_vdw, float ****tau_vdw, int *tau_idx_vdw, int *type, float **x,
+    float *c6_ij_tot, float *dc6_iji_tot, float *dc6_ijj_tot,
     double *dc6i, double *disp, double **f, double **sigma
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
-    __shared__ double sigma_00[128];
-    __shared__ double sigma_01[128];
-    __shared__ double sigma_02[128];
-    __shared__ double sigma_10[128];
-    __shared__ double sigma_11[128];
-    __shared__ double sigma_12[128];
-    __shared__ double sigma_20[128];
-    __shared__ double sigma_21[128];
-    __shared__ double sigma_22[128];
-    __shared__ double disp_shared[128];
+    __shared__ float sigma_00[128];
+    __shared__ float sigma_01[128];
+    __shared__ float sigma_02[128];
+    __shared__ float sigma_10[128];
+    __shared__ float sigma_11[128];
+    __shared__ float sigma_12[128];
+    __shared__ float sigma_20[128];
+    __shared__ float sigma_21[128];
+    __shared__ float sigma_22[128];
+    __shared__ float disp_shared[128];
 
-    double sigma_local_00 = 0.0;
-    double sigma_local_01 = 0.0;
-    double sigma_local_02 = 0.0;
-    double sigma_local_10 = 0.0;
-    double sigma_local_11 = 0.0;
-    double sigma_local_12 = 0.0;
-    double sigma_local_20 = 0.0;
-    double sigma_local_21 = 0.0;
-    double sigma_local_22 = 0.0;
-    double disp_local = 0.0;
+    float sigma_local_00 = 0.0f;
+    float sigma_local_01 = 0.0f;
+    float sigma_local_02 = 0.0f;
+    float sigma_local_10 = 0.0f;
+    float sigma_local_11 = 0.0f;
+    float sigma_local_12 = 0.0f;
+    float sigma_local_20 = 0.0f;
+    float sigma_local_21 = 0.0f;
+    float sigma_local_22 = 0.0f;
+    float disp_local = 0.0f;
 
     if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
-        double f_local[3] = { 0.0 };
-        double dc6i_local_i = 0.0;
-        double dc6i_local_j = 0.0;
+        float f_local[3] = { 0.0f };
+        float dc6i_local_i = 0.0f;
+        float dc6i_local_j = 0.0f;
 
-        const double c6 = c6_ij_tot[iter];
-        const double dc6iji = dc6_iji_tot[iter];
-        const double dc6ijj = dc6_ijj_tot[iter];
+        const float c6 = c6_ij_tot[iter];
+        const float dc6iji = dc6_iji_tot[iter];
+        const float dc6ijj = dc6_ijj_tot[iter];
         
         if (iat == jat) {
             const int atomtype_i = type[iat];
-            const double r0 = r0ab[atomtype_i][atomtype_i];
-            const double unit_r2r4 = r2r4[atomtype_i];
-            const double r42 = unit_r2r4 * unit_r2r4;
-            const double unit_a1 = (a1 * r0);
-            const double unit_a2 = (a2 * r0);
-            const double s8r42 = s8 * r42;
+            const float r0 = r0ab[atomtype_i][atomtype_i];
+            const float unit_r2r4 = r2r4[atomtype_i];
+            const float r42 = unit_r2r4 * unit_r2r4;
+            const float unit_a1 = (a1 * r0);
+            const float unit_a2 = (a2 * r0);
+            const float s8r42 = s8 * r42;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
@@ -1348,36 +1348,36 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
                 const int idx3 = tau_idx_vdw[k];
 
                 if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
-                const double rij[3] = {
+                const float rij[3] = {
                     tau_vdw[idx1][idx2][idx3][0],
                     tau_vdw[idx1][idx2][idx3][1],
                     tau_vdw[idx1][idx2][idx3][2]
                 };
-                const double r2 = lensq3(rij);
+                const float r2 = lensq3(rij);
                 if (r2 > rthr) { continue; }
 
-                const double r_rc = rsqrt(r2);
-                double unit_rc_a1 = unit_a1 * r_rc;
-                double t6 = unit_rc_a1 * unit_rc_a1; // ^2
+                const float r_rc = rsqrtf(r2);
+                float unit_rc_a1 = unit_a1 * r_rc;
+                float t6 = unit_rc_a1 * unit_rc_a1; // ^2
                 t6 *= unit_rc_a1; // ^3
                 t6 *= t6; // ^6
                 t6 *= unit_rc_a1; // ^7
                 t6 *= t6; // ^14
-                const double damp6 = 1.0 / fma(t6, 6.0, 1.0);
-                double unit_rc_a2 = unit_a2 * r_rc;
-                double t8 = unit_rc_a2 * unit_rc_a2; // ^2
+                const float damp6 = 1.0f / fmaf(t6, 6.0f, 1.0f);
+                float unit_rc_a2 = unit_a2 * r_rc;
+                float t8 = unit_rc_a2 * unit_rc_a2; // ^2
                 t8 *= t8; // ^4
                 t8 *= t8; // ^8
                 t8 *= t8; // ^16
-                const double damp8 = 1.0 / fma(t8, 6.0, 1.0);
-                const double r2_rc = r_rc * r_rc; // 1.0 / r2
-                const double r6_rc = r2_rc * r2_rc * r2_rc;
-                const double r8_rc = r6_rc * r2_rc;
-                const double x1 = 3.0 * c6 * r8_rc * fma(r2_rc, s8r42 * damp8 * fma(3.0 * alp8 * t8, damp8, -4.0), s6 * damp6 * fma(alp6 * t6, damp6, -1.0));
-                //const double x1 = 0.5 * 6.0 * c6 * r8_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0));
+                const float damp8 = 1.0f / fmaf(t8, 6.0f, 1.0f);
+                const float r2_rc = r_rc * r_rc; // 1.0 / r2
+                const float r6_rc = r2_rc * r2_rc * r2_rc;
+                const float r8_rc = r6_rc * r2_rc;
+                const float x1 = 3.0f * c6 * r8_rc * fmaf(r2_rc, s8r42 * damp8 * fmaf(3.0f * alp8 * t8, damp8, -4.0f), s6 * damp6 * fmaf(alp6 * t6, damp6, -1.0f));
+                //const float x1 = 0.5 * 6.0 * c6 * r8_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0));
                 //3.0 * alp6 = 48.0
                 
-                const double vec[3] = {
+                const float vec[3] = {
                     x1 * rij[0],
                     x1 * rij[1],
                     x1 * rij[2]
@@ -1393,8 +1393,8 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = 0.5 * r6_rc * fma(3.0 * r2_rc, s8r42 * damp8, s6 * damp6);
-                //const double dc6_rest = 0.5 * r6_rc * (s6 * damp6 + 3.0 * s8r42 * damp8 * r2_rc);
+                const float dc6_rest = 0.5f * r6_rc * fmaf(3.0f * r2_rc, s8r42 * damp8, s6 * damp6);
+                //const float dc6_rest = 0.5 * r6_rc * (s6 * damp6 + 3.0 * s8r42 * damp8 * r2_rc);
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1406,47 +1406,47 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
         else {
             const int atomtype_i = type[iat];
             const int atomtype_j = type[jat];
-            const double r0 = r0ab[atomtype_i][atomtype_j];
-            const double r42 = r2r4[atomtype_i] * r2r4[atomtype_j];
-            const double unit_a1 = (a1 * r0);
-            const double unit_a2 = (a2 * r0);
-            const double s8r42 = s8 * r42;
+            const float r0 = r0ab[atomtype_i][atomtype_j];
+            const float r42 = r2r4[atomtype_i] * r2r4[atomtype_j];
+            const float unit_a1 = (a1 * r0);
+            const float unit_a2 = (a2 * r0);
+            const float s8r42 = s8 * r42;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
                 const int idx2 = tau_idx_vdw[k-1];
                 const int idx3 = tau_idx_vdw[k];
 
-                const double rij[3] = {
+                const float rij[3] = {
                     x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0],
                     x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1],
                     x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
                 };
-                const double r2 = lensq3(rij);
+                const float r2 = lensq3(rij);
                 if (r2 > rthr) { continue; }
 
-                const double r_rc = rsqrt(r2);
-                double unit_rc_a1 = unit_a1 * r_rc;
-                double t6 = unit_rc_a1 * unit_rc_a1; // ^2
+                const float r_rc = rsqrtf(r2);
+                float unit_rc_a1 = unit_a1 * r_rc;
+                float t6 = unit_rc_a1 * unit_rc_a1; // ^2
                 t6 *= unit_rc_a1; // ^3
                 t6 *= t6; // ^6
                 t6 *= unit_rc_a1; // ^7
                 t6 *= t6; // ^14
-                const double damp6 = 1.0 / fma(t6, 6.0, 1.0);
-                double unit_rc_a2 = unit_a2 * r_rc;
-                double t8 = unit_rc_a2 * unit_rc_a2; // ^2
+                const float damp6 = 1.0f / fmaf(t6, 6.0f, 1.0f);
+                float unit_rc_a2 = unit_a2 * r_rc;
+                float t8 = unit_rc_a2 * unit_rc_a2; // ^2
                 t8 *= t8; // ^4
                 t8 *= t8; // ^8
                 t8 *= t8; // ^16
-                const double damp8 = 1.0 / fma(t8, 6.0, 1.0);
-                const double r2_rc = r_rc * r_rc; // 1.0 / r2
-                const double r6_rc = r2_rc * r2_rc * r2_rc;
-                const double r8_rc = r6_rc * r2_rc;
-                const double x1 = 6.0 * c6 * r8_rc * fma(r2_rc, s8r42 * damp8 * fma(3.0 * alp8 * t8, damp8, -4.0), s6 * damp6 * fma(alp6 * t6, damp6, -1.0));
-                //const double x1 = 6.0 * c6 * r8_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0));
+                const float damp8 = 1.0f / fmaf(t8, 6.0f, 1.0f);
+                const float r2_rc = r_rc * r_rc; // 1.0 / r2
+                const float r6_rc = r2_rc * r2_rc * r2_rc;
+                const float r8_rc = r6_rc * r2_rc;
+                const float x1 = 6.0f * c6 * r8_rc * fmaf(r2_rc, s8r42 * damp8 * fmaf(3.0f * alp8 * t8, damp8, -4.0f), s6 * damp6 * fmaf(alp6 * t6, damp6, -1.0f));
+                //const float x1 = 6.0 * c6 * r8_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0));
                 //3.0 * alp6 = 48.0
 
-                const double vec[3] = {
+                const float vec[3] = {
                     x1 * rij[0],
                     x1 * rij[1],
                     x1 * rij[2]
@@ -1466,8 +1466,8 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = r6_rc * fma(3.0 * r2_rc, s8r42 * damp8, s6 * damp6);
-                //const double dc6_rest = r6_rc * (s6 * damp6 + 3.0 * s8r42 * damp8 * r2_rc);
+                const float dc6_rest = r6_rc * fmaf(3.0f * r2_rc, s8r42 * damp8, s6 * damp6);
+                //const float dc6_rest = r6_rc * (s6 * damp6 + 3.0 * s8r42 * damp8 * r2_rc);
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1577,55 +1577,55 @@ void PairD3::get_forces_without_dC6_zero_damping_modified() {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_forces_without_dC6_bj_damping(
-    int maxij, int maxtau, double rthr, double s6, double s8, double a1, double a2,
-    double *r2r4, int *rep_vdw, double ****tau_vdw, int *tau_idx_vdw, int *type, double **x,
-    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot,
+    int maxij, int maxtau, float rthr, float s6, float s8, float a1, float a2,
+    float *r2r4, int *rep_vdw, float ****tau_vdw, int *tau_idx_vdw, int *type, float **x,
+    float *c6_ij_tot, float *dc6_iji_tot, float *dc6_ijj_tot,
     double *dc6i, double *disp, double **f, double **sigma
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
-    __shared__ double sigma_00[128];
-    __shared__ double sigma_01[128];
-    __shared__ double sigma_02[128];
-    __shared__ double sigma_10[128];
-    __shared__ double sigma_11[128];
-    __shared__ double sigma_12[128];
-    __shared__ double sigma_20[128];
-    __shared__ double sigma_21[128];
-    __shared__ double sigma_22[128];
-    __shared__ double disp_shared[128];
+    __shared__ float sigma_00[128];
+    __shared__ float sigma_01[128];
+    __shared__ float sigma_02[128];
+    __shared__ float sigma_10[128];
+    __shared__ float sigma_11[128];
+    __shared__ float sigma_12[128];
+    __shared__ float sigma_20[128];
+    __shared__ float sigma_21[128];
+    __shared__ float sigma_22[128];
+    __shared__ float disp_shared[128];
 
-    double sigma_local_00 = 0.0;
-    double sigma_local_01 = 0.0;
-    double sigma_local_02 = 0.0;
-    double sigma_local_10 = 0.0;
-    double sigma_local_11 = 0.0;
-    double sigma_local_12 = 0.0;
-    double sigma_local_20 = 0.0;
-    double sigma_local_21 = 0.0;
-    double sigma_local_22 = 0.0;
-    double disp_local = 0.0;
+    float sigma_local_00 = 0.0f;
+    float sigma_local_01 = 0.0f;
+    float sigma_local_02 = 0.0f;
+    float sigma_local_10 = 0.0f;
+    float sigma_local_11 = 0.0f;
+    float sigma_local_12 = 0.0f;
+    float sigma_local_20 = 0.0f;
+    float sigma_local_21 = 0.0f;
+    float sigma_local_22 = 0.0f;
+    float disp_local = 0.0f;
 
     if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
-        double f_local[3] = { 0.0 };
-        double dc6i_local_i = 0.0;
-        double dc6i_local_j = 0.0;
+        float f_local[3] = { 0.0f };
+        float dc6i_local_i = 0.0f;
+        float dc6i_local_j = 0.0f;
 
-        const double c6 = c6_ij_tot[iter];
-        const double dc6iji = dc6_iji_tot[iter];
-        const double dc6ijj = dc6_ijj_tot[iter];
+        const float c6 = c6_ij_tot[iter];
+        const float dc6iji = dc6_iji_tot[iter];
+        const float dc6ijj = dc6_ijj_tot[iter];
 
         if (iat == jat) {
-            const double unit_r2r4 = r2r4[type[iat]];
-            const double r42x3 = unit_r2r4 * unit_r2r4 * 3.0;
-            const double R0 = fma(a1, sqrt(r42x3), a2);
-            const double R0_2 = R0 * R0;
-            const double R0_6 = R0_2 * R0_2 * R0_2;
-            const double R0_8 = R0_6 * R0_2;
-            const double s8r42x3 = s8 * r42x3;
+            const float unit_r2r4 = r2r4[type[iat]];
+            const float r42x3 = unit_r2r4 * unit_r2r4 * 3.0f;
+            const float R0 = fmaf(a1, sqrtf(r42x3), a2);
+            const float R0_2 = R0 * R0;
+            const float R0_6 = R0_2 * R0_2 * R0_2;
+            const float R0_8 = R0_6 * R0_2;
+            const float s8r42x3 = s8 * r42x3;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
@@ -1633,26 +1633,26 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
                 const int idx3 = tau_idx_vdw[k];
 
                 if (idx1 == rep_vdw[0] && idx2 == rep_vdw[1] && idx3 == rep_vdw[2]) { continue; }
-                const double rij[3] = {
+                const float rij[3] = {
                     tau_vdw[idx1][idx2][idx3][0],
                     tau_vdw[idx1][idx2][idx3][1],
                     tau_vdw[idx1][idx2][idx3][2]
                 };
-                const double r2 = lensq3(rij);
+                const float r2 = lensq3(rij);
                 if (r2 > rthr) { continue; }
 
-                const double r = sqrt(r2);
-                const double r5 = r2 * r2 * r;
-                const double r7 = r5 * r2;
-                const double t6_rc = 1.0 / fma(r5, r, R0_6);
-                const double t8_rc = 1.0 / fma(r7, r, R0_8);
-                const double t6_sqrc = t6_rc * t6_rc;
-                const double t8_sqrc = t8_rc * t8_rc;
-                const double x1 = -c6 * fma(4.0 * s8r42x3 * r7, t8_sqrc, 3.0 * s6 * r5 * t6_sqrc);
-                //const double x1 = 0.5 * -c6 * (6.0 * s6 * r5 * t6_sqrc + 8.0 * s8r42x3 * r7 * t8_sqrc;
+                const float r = sqrtf(r2);
+                const float r5 = r2 * r2 * r;
+                const float r7 = r5 * r2;
+                const float t6_rc = 1.0f / fmaf(r5, r, R0_6);
+                const float t8_rc = 1.0f / fmaf(r7, r, R0_8);
+                const float t6_sqrc = t6_rc * t6_rc;
+                const float t8_sqrc = t8_rc * t8_rc;
+                const float x1 = -c6 * fmaf(4.0f * s8r42x3 * r7, t8_sqrc, 3.0f * s6 * r5 * t6_sqrc);
+                //const float x1 = 0.5 * -c6 * (6.0 * s6 * r5 * t6_sqrc + 8.0 * s8r42x3 * r7 * t8_sqrc;
 
-                const double r_rc = 1.0 / r; // rsqrt(r2)
-                const double vec[3] = {
+                const float r_rc = 1.0f / r; // rsqrt(r2)
+                const float vec[3] = {
                     x1 * rij[0] * r_rc,
                     x1 * rij[1] * r_rc,
                     x1 * rij[2] * r_rc
@@ -1668,8 +1668,8 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = 0.5 * fma(s8r42x3, t8_rc, s6 * t6_rc);
-                //const double dc6_rest = 0.5 * s6 * t6_rc + s8r42x3 * t8_rc;
+                const float dc6_rest = 0.5f * fmaf(s8r42x3, t8_rc, s6 * t6_rc);
+                //const float dc6_rest = 0.5 * s6 * t6_rc + s8r42x3 * t8_rc;
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1679,37 +1679,37 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
         }
 
         else {
-            const double r42x3 = r2r4[type[iat]] * r2r4[type[jat]] * 3.0;
-            const double R0 = fma(a1, sqrt(r42x3), a2);
-            const double R0_2 = R0 * R0;
-            const double R0_6 = R0_2 * R0_2 * R0_2;
-            const double R0_8 = R0_6 * R0_2;
-            const double s8r42x3 = s8 * r42x3;
+            const float r42x3 = r2r4[type[iat]] * r2r4[type[jat]] * 3.0f;
+            const float R0 = fmaf(a1, sqrtf(r42x3), a2);
+            const float R0_2 = R0 * R0;
+            const float R0_6 = R0_2 * R0_2 * R0_2;
+            const float R0_8 = R0_6 * R0_2;
+            const float s8r42x3 = s8 * r42x3;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
                 const int idx2 = tau_idx_vdw[k-1];
                 const int idx3 = tau_idx_vdw[k];
-                const double rij[3] = {
+                const float rij[3] = {
                     x[jat][0] - x[iat][0] + tau_vdw[idx1][idx2][idx3][0],
                     x[jat][1] - x[iat][1] + tau_vdw[idx1][idx2][idx3][1],
                     x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
                 };
-                const double r2 = lensq3(rij);
+                const float r2 = lensq3(rij);
                 if (r2 > rthr) { continue; }
 
-                const double r = sqrt(r2);
-                const double r5 = r2 * r2 * r;
-                const double r7 = r5 * r2;
-                const double t6_rc = 1.0 / fma(r5, r, R0_6);
-                const double t8_rc = 1.0 / fma(r7, r, R0_8);
-                const double t6_sqrc = t6_rc * t6_rc;
-                const double t8_sqrc = t8_rc * t8_rc;
-                const double x1 = -c6 * fma(8.0 * s8r42x3 * r7, t8_sqrc, 6.0 * s6 * r5 * t6_sqrc);
-                //const double x1 = -c6 * (6.0 * s6 * r5 * t6_sqrc + 8.0 * s8r42x3 * r7 * t8_sqrc;
+                const float r = sqrtf(r2);
+                const float r5 = r2 * r2 * r;
+                const float r7 = r5 * r2;
+                const float t6_rc = 1.0f / fmaf(r5, r, R0_6);
+                const float t8_rc = 1.0f / fmaf(r7, r, R0_8);
+                const float t6_sqrc = t6_rc * t6_rc;
+                const float t8_sqrc = t8_rc * t8_rc;
+                const float x1 = -c6 * fmaf(8.0f * s8r42x3 * r7, t8_sqrc, 6.0f * s6 * r5 * t6_sqrc);
+                //const float x1 = -c6 * (6.0 * s6 * r5 * t6_sqrc + 8.0 * s8r42x3 * r7 * t8_sqrc;
 
-                const double r_rc = 1.0 / r; // rsqrt(r2)
-                const double vec[3] = {
+                const float r_rc = 1.0f / r; // rsqrt(r2)
+                const float vec[3] = {
                     x1 * rij[0] * r_rc,
                     x1 * rij[1] * r_rc,
                     x1 * rij[2] * r_rc
@@ -1729,8 +1729,8 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = fma(s8r42x3, t8_rc, s6 * t6_rc);
-                //const double dc6_rest = s6 * t6_rc + s8r42x3 * t8_rc;
+                const float dc6_rest = fmaf(s8r42x3, t8_rc, s6 * t6_rc);
+                //const float dc6_rest = s6 * t6_rc + s8r42x3 * t8_rc;
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1831,41 +1831,41 @@ void PairD3::get_forces_without_dC6_bj_damping() {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_forces_with_dC6(
-    int maxij, int maxtau, double cn_thr, double K1,
-    double *dc6i, double *rcov, int *rep_cn, double ****tau_cn, int *tau_idx_cn, int *type, double **x, 
+    int maxij, int maxtau, float cn_thr, float K1,
+    double *dc6i, float *rcov, int *rep_cn, float ****tau_cn, int *tau_idx_cn, int *type, float **x, 
     double **f, double **sigma
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
-    __shared__ double sigma_00[128];
-    __shared__ double sigma_01[128];
-    __shared__ double sigma_02[128];
-    __shared__ double sigma_10[128];
-    __shared__ double sigma_11[128];
-    __shared__ double sigma_12[128];
-    __shared__ double sigma_20[128];
-    __shared__ double sigma_21[128];
-    __shared__ double sigma_22[128];
+    __shared__ float sigma_00[128];
+    __shared__ float sigma_01[128];
+    __shared__ float sigma_02[128];
+    __shared__ float sigma_10[128];
+    __shared__ float sigma_11[128];
+    __shared__ float sigma_12[128];
+    __shared__ float sigma_20[128];
+    __shared__ float sigma_21[128];
+    __shared__ float sigma_22[128];
 
-    double sigma_local_00 = 0.0;
-    double sigma_local_01 = 0.0;
-    double sigma_local_02 = 0.0;
-    double sigma_local_10 = 0.0;
-    double sigma_local_11 = 0.0;
-    double sigma_local_12 = 0.0;
-    double sigma_local_20 = 0.0;
-    double sigma_local_21 = 0.0;
-    double sigma_local_22 = 0.0;
+    float sigma_local_00 = 0.0f;
+    float sigma_local_01 = 0.0f;
+    float sigma_local_02 = 0.0f;
+    float sigma_local_10 = 0.0f;
+    float sigma_local_11 = 0.0f;
+    float sigma_local_12 = 0.0f;
+    float sigma_local_20 = 0.0f;
+    float sigma_local_21 = 0.0f;
+    float sigma_local_22 = 0.0f;
 
-    double f_local[3] = { 0.0 };
+    float f_local[3] = { 0.0f };
 
     if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
         if (iat == jat) {
-            const double rcov_sum = rcov[type[iat]] * 2.0;
-            const double dc6i_sum = dc6i[iat];
+            const float rcov_sum = rcov[type[iat]] * 2.0f;
+            const float dc6i_sum = dc6i[iat];
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_cn[k-2];
@@ -1873,21 +1873,21 @@ __global__ void kernel_get_forces_with_dC6(
                 const int idx3 = tau_idx_cn[k];
     
                 if (idx1 == rep_cn[0] && idx2 == rep_cn[1] && idx3 == rep_cn[2]) { continue; }
-                const double rij[3] = {
+                const float rij[3] = {
                     tau_cn[idx1][idx2][idx3][0],
                     tau_cn[idx1][idx2][idx3][1],
                     tau_cn[idx1][idx2][idx3][2],
                 };
-                const double r2 = lensq3(rij);
+                const float r2 = lensq3(rij);
                 if (r2 >= cn_thr) { continue; }
 
-                const double r_rc = rsqrt(r2);
-                const double expterm = exp(-K1 * (rcov_sum * r_rc - 1.0));
-                const double unit_rc = 1.0 / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                const double dcnn = -K1 * rcov_sum * expterm * unit_rc;
-                const double x1 = dcnn * dc6i_sum;
+                const float r_rc = rsqrtf(r2);
+                const float expterm = expf(-K1 * (rcov_sum * r_rc - 1.0f));
+                const float unit_rc = 1.0f / (r2 * (expterm + 1.0f) * (expterm + 1.0f));
+                const float dcnn = -K1 * rcov_sum * expterm * unit_rc;
+                const float x1 = dcnn * dc6i_sum;
 
-                const double vec[3] = {
+                const float vec[3] = {
                     x1 * rij[0] * r_rc,
                     x1 * rij[1] * r_rc,
                     x1 * rij[2] * r_rc
@@ -1906,29 +1906,29 @@ __global__ void kernel_get_forces_with_dC6(
         }
             
         else {
-            const double rcov_sum = rcov[type[iat]] + rcov[type[jat]];
-            const double dc6i_sum = dc6i[iat] + dc6i[jat];
+            const float rcov_sum = rcov[type[iat]] + rcov[type[jat]];
+            const float dc6i_sum = dc6i[iat] + dc6i[jat];
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_cn[k-2];
                 const int idx2 = tau_idx_cn[k-1];
                 const int idx3 = tau_idx_cn[k];
 
-                const double rij[3] = {
+                const float rij[3] = {
                     x[jat][0] - x[iat][0] + tau_cn[idx1][idx2][idx3][0],
                     x[jat][1] - x[iat][1] + tau_cn[idx1][idx2][idx3][1],
                     x[jat][2] - x[iat][2] + tau_cn[idx1][idx2][idx3][2]
                 };
-                const double r2 = lensq3(rij);
+                const float r2 = lensq3(rij);
                 if (r2 >= cn_thr) { continue; }
 
-                const double r_rc = rsqrt(r2);
-                const double expterm = exp(-K1 * (rcov_sum * r_rc - 1.0));
-                const double unit_rc = 1.0 / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                const double dcnn = -K1 * rcov_sum * expterm * unit_rc;
-                const double x1 = dcnn * dc6i_sum;
+                const float r_rc = rsqrtf(r2);
+                const float expterm = expf(-K1 * (rcov_sum * r_rc - 1.0f));
+                const float unit_rc = 1.0f / (r2 * (expterm + 1.0f) * (expterm + 1.0f));
+                const float dcnn = -K1 * rcov_sum * expterm * unit_rc;
+                const float x1 = dcnn * dc6i_sum;
 
-                const double vec[3] = {
+                const float vec[3] = {
                     x1 * rij[0] * r_rc,
                     x1 * rij[1] * r_rc,
                     x1 * rij[2] * r_rc
