@@ -25,7 +25,7 @@ using namespace LAMMPS_NS;
     cudaEvent_t start, stop;  \
     cudaEventCreate(&start);  \
     cudaEventCreate(&stop);   \
-    cudaEventRecord(start);   \
+    cudaEventRecord(start);   
 
 #define STOP_CUDA_TIMER(tag)                           \
     cudaEventRecord(stop);                             \
@@ -34,20 +34,18 @@ using namespace LAMMPS_NS;
     cudaEventElapsedTime(&msec, start, stop);          \
     printf("Elapsed time for %s: %f ms\n", tag, msec); \
     cudaEventDestroy(start);                           \
-    cudaEventDestroy(stop);                            \
+    cudaEventDestroy(stop);                            
 
-#define CHECK_CUDA(call)                                                 \
-  do {                                                                   \
+#define CHECK_CUDA(call) do {                                            \
     cudaError_t status_ = call;                                          \
     if (status_ != cudaSuccess) {                                        \
       fprintf(stderr, "CUDA error (%s:%d): %s:%s\n", __FILE__, __LINE__, \
               cudaGetErrorName(status_), cudaGetErrorString(status_));   \
       exit(EXIT_FAILURE);                                                \
     }                                                                    \
-  } while (0)
+} while (0)
 
-#define CHECK_CUDA_ERROR()                                               \
-  do {                                                                   \
+#define CHECK_CUDA_ERROR() do {                                          \
     cudaDeviceSynchronize();                                             \
     cudaError_t status_ = cudaGetLastError();                            \
     if (status_ != cudaSuccess) {                                        \
@@ -55,7 +53,15 @@ using namespace LAMMPS_NS;
               cudaGetErrorName(status_), cudaGetErrorString(status_));   \
       exit(EXIT_FAILURE);                                                \
     }                                                                    \
-  } while (0)
+} while (0)
+
+#define CHECK_CUDA_DEVICES() do {                                              \
+    int deviceCount = 0;                                                       \
+    if (cudaGetDeviceCount(&deviceCount) != cudaSuccess || deviceCount == 0) { \
+        error->all(FLERR, "No CUDA devices found. Exiting...");                \
+        exit(EXIT_FAILURE);                                                    \
+    }                                                                          \
+} while(0)
 /* ------- Macros for CUDA error handling ------- */
 
 /* ------- Math functions for CUDA compatibility ------- */
@@ -63,9 +69,9 @@ int *atomtype;
 double *dispall;
 
 inline __host__ __device__ void ij_at_linij(int linij, int &i, int &j) {
-    i = (sqrtf(1 + 8.0f * linij) - 1) / 2;
+    i = (sqrtf(1 + 8 * linij) - 1) / 2;
     j = linij - i * (i + 1) / 2;
-} // unroll triangular loop -> limit=46340 atoms
+} // unroll the triangular loop
 
 inline __host__ __device__ double lensq3(const double *v)
 {
@@ -168,7 +174,7 @@ PairD3::~PairD3() {
         cudaFree(atomtype);
         cudaFree(dispall);
 
-        CHECK_CUDA_ERROR();
+        //CHECK_CUDA_ERROR();
     }
 }
 
@@ -177,6 +183,7 @@ PairD3::~PairD3() {
 ------------------------------------------------------------------------- */
 
 void PairD3::allocate() {
+    CHECK_CUDA_DEVICES();
     allocated = 1;
 
     /* atom->ntypes : # of elements; element index starts from 1 */
@@ -226,11 +233,11 @@ void PairD3::allocate() {
         }
     }
 
-    for (int idx1 = 0; idx1 < np1;  idx1++) {
-        for (int idx2 = 0; idx2 < np1;  idx2++) {
+    for (int idx1 = 0; idx1 < np1; idx1++) {
+        for (int idx2 = 0; idx2 < np1; idx2++) {
             for (int idx3 = 0; idx3 < MAXC; idx3++) {
                 for (int idx4 = 0; idx4 < MAXC; idx4++) {
-                    for (int idx5 = 0; idx5 < 3;    idx5++) {
+                    for (int idx5 = 0; idx5 < 3; idx5++) {
                         c6ab[idx1][idx2][idx3][idx4][idx5] = -1;
                     }
                 }
@@ -247,7 +254,7 @@ void PairD3::allocate() {
     cudaMemcpy(atomtype, atom->type, n * sizeof(int), cudaMemcpyHostToDevice);
     cudaMallocManaged(&dispall, sizeof(double));
 
-    CHECK_CUDA_ERROR();
+    //CHECK_CUDA_ERROR();
 }
 
 /* ----------------------------------------------------------------------
@@ -654,10 +661,16 @@ void PairD3::setfuncpar(char* functional_name) {
         error->all(FLERR, "Unknown damping type");
     }
 
-    rs8 = rs18;
-    alp6 = alp;
+    rs8 = rs18; 
+    alp6 = alp; 
     alp8 = alp + 2.0;
+    // rs10 = rs18
+    // alp10 = alp + 4.0;
 
+    a1 = rs6;
+    a2 = rs8;
+    s8 = s18;
+    // s6 is already defined
 }
 
 /* ----------------------------------------------------------------------
@@ -821,13 +834,13 @@ void PairD3::coeff(int narg, char **arg) {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_dC6_dCNij(
-    int linij,
-    int *type, double *cn, int *mxc, double *****c6ab,
+    int maxij, double K3,
+    double *cn, int *mxc, double *****c6ab, int *type,
     double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (iter < linij) {
+    if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
@@ -852,7 +865,7 @@ __global__ void kernel_get_dC6_dCNij(
             for (int b = 0; b < mxcj; b++) {
                 const double c6ref = c6ab[atomtype_i][atomtype_j][a][b][0];
 
-                if (c6ref > 0) {
+                if (c6ref > 0.0f) {
                     const double cn_refi = c6ab[atomtype_i][atomtype_j][a][b][1];
                     const double cn_refj = c6ab[atomtype_i][atomtype_j][a][b][2];
 
@@ -862,11 +875,11 @@ __global__ void kernel_get_dC6_dCNij(
                         c6mem = c6ref;
                     }
 
-                    double expterm = exp(-4.0 * r);
+                    double expterm = exp(K3* r);
                     numerator += c6ref * expterm;
                     denominator += expterm;
 
-                    expterm *= 2.0 * -4.0;
+                    expterm *= 2.0 * K3;
 
                     double term = expterm * (cni - cn_refi);
                     d_numerator_i += c6ref * term;
@@ -895,19 +908,21 @@ __global__ void kernel_get_dC6_dCNij(
 
 void PairD3::get_dC6_dCNij() {
     int n = atom->natoms;
-    int linij = n * (n + 1) / 2;
+    int maxij = n * (n + 1) / 2;
 
-    START_CUDA_TIMER();
+    //START_CUDA_TIMER();
 
     int threadsPerBlock = 128;
-    int blocksPerGrid = (linij + threadsPerBlock - 1) / threadsPerBlock;
+    int blocksPerGrid = (maxij + threadsPerBlock - 1) / threadsPerBlock;
     kernel_get_dC6_dCNij<<<blocksPerGrid, threadsPerBlock>>>(
-        linij, atomtype, cn, mxc, c6ab, c6_ij_tot, dc6_iji_tot, dc6_ijj_tot
+        maxij, K3,
+        cn, mxc, c6ab, atomtype,
+        c6_ij_tot, dc6_iji_tot, dc6_ijj_tot
     );
     cudaDeviceSynchronize();
 
-    STOP_CUDA_TIMER("get_dC6dCNij");
-    CHECK_CUDA_ERROR();
+    //STOP_CUDA_TIMER("get_dC6dCNij");
+    //CHECK_CUDA_ERROR();
 }
 
 /* ----------------------------------------------------------------------
@@ -1015,7 +1030,7 @@ void PairD3::set_lattice_vectors() {
         cudaMallocManaged(&tau_idx_cn, tau_idx_cn_total_size * sizeof(int));
     }
 
-    CHECK_CUDA_ERROR();
+    //CHECK_CUDA_ERROR();
 }
 
 /* ----------------------------------------------------------------------
@@ -1054,13 +1069,13 @@ void PairD3::set_lattice_repetition_criteria(double r_threshold, int* rep_v) {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_coordination_number(
-    int linij, int maxtau, double cn_thr,
-    int *type, int *tau_idx_cn, int *rep_cn, double ****tau_cn, double *rcov, double **x,
+    int maxij, int maxtau, double cn_thr, double K1,
+    double *rcov, int *rep_cn, double ****tau_cn, int *tau_idx_cn, int *type, double **x,
     double *cn
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (iter < linij) {
+    if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
@@ -1072,16 +1087,15 @@ __global__ void kernel_get_coordination_number(
                 const int idx1 = tau_idx_cn[k-2];
                 const int idx2 = tau_idx_cn[k-1];
                 const int idx3 = tau_idx_cn[k];
-                if (idx1 != rep_cn[0] || idx2 != rep_cn[1] || idx3 != rep_cn[2]) {
-                    const double rx = tau_cn[idx1][idx2][idx3][0];
-                    const double ry = tau_cn[idx1][idx2][idx3][1];
-                    const double rz = tau_cn[idx1][idx2][idx3][2];
-                    const double r2 = rx * rx + ry * ry + rz * rz;
-                    if (r2 <= cn_thr) {
-                        const double r_rc = rsqrt(r2);
-                        const double damp = 1.0 / (1.0 + exp(-16.0 * ((rcov_sum * r_rc) - 1.0)));
-                        cn_local += damp;
-                    }
+                if (idx1 == rep_cn[0] && idx2 == rep_cn[1] && idx3 == rep_cn[2]) { continue; }
+                const double rx = tau_cn[idx1][idx2][idx3][0];
+                const double ry = tau_cn[idx1][idx2][idx3][1];
+                const double rz = tau_cn[idx1][idx2][idx3][2];
+                const double r2 = rx * rx + ry * ry + rz * rz;
+                if (r2 <= cn_thr) {
+                    const double r_rc = rsqrt(r2);
+                    const double damp = 1.0 / (1.0 + exp(-K1 * ((rcov_sum * r_rc) - 1.0)));
+                    cn_local += damp;
                 }
             }
             atomicAdd(&cn[iat], cn_local);
@@ -1099,7 +1113,7 @@ __global__ void kernel_get_coordination_number(
                 const double r2 = rx * rx + ry * ry + rz * rz;
                 if (r2 <= cn_thr) {
                     const double r_rc = rsqrt(r2);
-                    const double damp = 1.0 / (1.0 + exp(-16.0 * ((rcov_sum * r_rc) - 1.0)));
+                    const double damp = 1.0 / (1.0 + exp(-K1 * ((rcov_sum * r_rc) - 1.0)));
                     cn_local += damp;
                 }
             }
@@ -1111,24 +1125,26 @@ __global__ void kernel_get_coordination_number(
 
 void PairD3::get_coordination_number() {
     int n = atom->natoms;
-    int linij = n * (n + 1) / 2;
+    int maxij = n * (n + 1) / 2;
     int maxtau = tau_idx_cn_total_size;
 
     for (int i = 0; i < n; i++) {
         cn[i] = 0.0;
     }
 
-    START_CUDA_TIMER();
+    //START_CUDA_TIMER();
 
     int threadsPerBlock = 128;
-    int blocksPerGrid = (linij + threadsPerBlock - 1) / threadsPerBlock;
+    int blocksPerGrid = (maxij + threadsPerBlock - 1) / threadsPerBlock;
     kernel_get_coordination_number<<<blocksPerGrid, threadsPerBlock>>>(
-        linij, maxtau, cn_thr, atomtype, tau_idx_cn, rep_cn, tau_cn, rcov, x, cn
+        maxij, maxtau, cn_thr, K1,
+        rcov, rep_cn, tau_cn, tau_idx_cn, atomtype, x,
+        cn
     );
     cudaDeviceSynchronize();
 
-    STOP_CUDA_TIMER("get_coord");
-    CHECK_CUDA_ERROR();
+    //STOP_CUDA_TIMER("get_coord");
+    //CHECK_CUDA_ERROR();
 
     get_dC6_dCNij();
 }
@@ -1174,7 +1190,7 @@ void PairD3::reallocate_arrays() {
 
     /* -------------- Create new arrays -------------- */
 
-    CHECK_CUDA_ERROR();
+    //CHECK_CUDA_ERROR();
 }
 
 /* ----------------------------------------------------------------------
@@ -1276,11 +1292,10 @@ void PairD3::precalculate_tau_array() {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_forces_without_dC6_zero_damping(
-    int linij, int maxtau,
-    double s6, double s8, double a1_sqrt3, double a1, double a2, double r2_rthr, double alp6, double alp8,
-    double **x, int *type, double *dc6i, double *r2r4, double **r0ab, int *tau_idx_vdw, double ****tau_vdw, int *rep_vdw,
-    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot, 
-    double *disp, double **f, double **sigma
+    int maxij, int maxtau, double rthr, double s6, double s8, double a1, double a2, double alp6, double alp8,
+    double *r2r4, double **r0ab, int *rep_vdw, double ****tau_vdw, int *tau_idx_vdw, int *type, double **x,
+    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot,
+    double *dc6i, double *disp, double **f, double **sigma
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1306,7 +1321,7 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
     double sigma_local_22 = 0.0;
     double disp_local = 0.0;
 
-    if (iter < linij) {
+    if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
@@ -1323,6 +1338,9 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
             const double r0 = r0ab[atomtype_i][atomtype_i];
             const double unit_r2r4 = r2r4[atomtype_i];
             const double r42 = unit_r2r4 * unit_r2r4;
+            const double unit_a1 = (a1 * r0);
+            const double unit_a2 = (a2 * r0);
+            const double s8r42 = s8 * r42;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
@@ -1336,27 +1354,29 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
                     tau_vdw[idx1][idx2][idx3][2]
                 };
                 const double r2 = lensq3(rij);
-                if (r2 > r2_rthr) { continue; }
+                if (r2 > rthr) { continue; }
 
                 const double r_rc = rsqrt(r2);
-                double unit_rc_a1 = (a1 * r0) * r_rc;
+                double unit_rc_a1 = unit_a1 * r_rc;
                 double t6 = unit_rc_a1 * unit_rc_a1; // ^2
                 t6 *= unit_rc_a1; // ^3
                 t6 *= t6; // ^6
                 t6 *= unit_rc_a1; // ^7
                 t6 *= t6; // ^14
-                const double damp6 = 1.0 / (1.0 + 6.0 * t6);
-                double unit_rc_a2 = (a2 * r0) * r_rc;
+                const double damp6 = 1.0 / fma(t6, 6.0, 1.0);
+                double unit_rc_a2 = unit_a2 * r_rc;
                 double t8 = unit_rc_a2 * unit_rc_a2; // ^2
                 t8 *= t8; // ^4
                 t8 *= t8; // ^8
                 t8 *= t8; // ^16
-                const double damp8 = 1.0 / (1.0 + 6.0 * t8);
+                const double damp8 = 1.0 / fma(t8, 6.0, 1.0);
                 const double r2_rc = r_rc * r_rc; // 1.0 / r2
                 const double r6_rc = r2_rc * r2_rc * r2_rc;
-                const double r7_rc = r6_rc * r_rc;
-                const double x1 = 0.5 * 6.0 * c6 * r7_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8 * r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0)) * r_rc;
-
+                const double r8_rc = r6_rc * r2_rc;
+                const double x1 = 3.0 * c6 * r8_rc * fma(r2_rc, s8r42 * damp8 * fma(3.0 * alp8 * t8, damp8, -4.0), s6 * damp6 * fma(alp6 * t6, damp6, -1.0));
+                //const double x1 = 0.5 * 6.0 * c6 * r8_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0));
+                //3.0 * alp6 = 48.0
+                
                 const double vec[3] = {
                     x1 * rij[0],
                     x1 * rij[1],
@@ -1373,7 +1393,8 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = 0.5 * (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_rc) * r6_rc;
+                const double dc6_rest = 0.5 * r6_rc * fma(3.0 * r2_rc, s8r42 * damp8, s6 * damp6);
+                //const double dc6_rest = 0.5 * r6_rc * (s6 * damp6 + 3.0 * s8r42 * damp8 * r2_rc);
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1387,6 +1408,9 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
             const int atomtype_j = type[jat];
             const double r0 = r0ab[atomtype_i][atomtype_j];
             const double r42 = r2r4[atomtype_i] * r2r4[atomtype_j];
+            const double unit_a1 = (a1 * r0);
+            const double unit_a2 = (a2 * r0);
+            const double s8r42 = s8 * r42;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
@@ -1399,26 +1423,28 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
                     x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
                 };
                 const double r2 = lensq3(rij);
-                if (r2 > r2_rthr) { continue; }
+                if (r2 > rthr) { continue; }
 
                 const double r_rc = rsqrt(r2);
-                double unit_rc_a1 = (a1 * r0) * r_rc;
+                double unit_rc_a1 = unit_a1 * r_rc;
                 double t6 = unit_rc_a1 * unit_rc_a1; // ^2
                 t6 *= unit_rc_a1; // ^3
                 t6 *= t6; // ^6
                 t6 *= unit_rc_a1; // ^7
                 t6 *= t6; // ^14
-                const double damp6 = 1.0 / (1.0 + 6.0 * t6);
-                double unit_rc_a2 = (a2 * r0) * r_rc;
+                const double damp6 = 1.0 / fma(t6, 6.0, 1.0);
+                double unit_rc_a2 = unit_a2 * r_rc;
                 double t8 = unit_rc_a2 * unit_rc_a2; // ^2
                 t8 *= t8; // ^4
                 t8 *= t8; // ^8
                 t8 *= t8; // ^16
-                const double damp8 = 1.0 / (1.0 + 6.0 * t8);
+                const double damp8 = 1.0 / fma(t8, 6.0, 1.0);
                 const double r2_rc = r_rc * r_rc; // 1.0 / r2
                 const double r6_rc = r2_rc * r2_rc * r2_rc;
-                const double r7_rc = r6_rc * r_rc;
-                const double x1 = 6.0 * c6 * r7_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8 * r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0)) * r_rc;
+                const double r8_rc = r6_rc * r2_rc;
+                const double x1 = 6.0 * c6 * r8_rc * fma(r2_rc, s8r42 * damp8 * fma(3.0 * alp8 * t8, damp8, -4.0), s6 * damp6 * fma(alp6 * t6, damp6, -1.0));
+                //const double x1 = 6.0 * c6 * r8_rc * (s6 * damp6 * (14.0 * t6 * damp6 - 1.0) + s8r42 * r2_rc * damp8 * (48.0 * t8 * damp8 - 4.0));
+                //3.0 * alp6 = 48.0
 
                 const double vec[3] = {
                     x1 * rij[0],
@@ -1440,7 +1466,8 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = (s6 * damp6 + 3.0 * s8 * r42 * damp8 * r2_rc) * r6_rc;
+                const double dc6_rest = r6_rc * fma(3.0 * r2_rc, s8r42 * damp8, s6 * damp6);
+                //const double dc6_rest = r6_rc * (s6 * damp6 + 3.0 * s8r42 * damp8 * r2_rc);
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1500,7 +1527,7 @@ __global__ void kernel_get_forces_without_dC6_zero_damping(
 
 void PairD3::get_forces_without_dC6_zero_damping() {
     int n = atom->natoms;
-    int linij = n * (n + 1) / 2;
+    int maxij = n * (n + 1) / 2;
     int maxtau = tau_idx_vdw_total_size;
 
     *dispall = 0.0;
@@ -1519,24 +1546,21 @@ void PairD3::get_forces_without_dC6_zero_damping() {
         }
     }
 
-    const double s8 = s18;
-    const double a1 = rs6;
-    const double a1_sqrt3 = a1 * sqrt(3);
-    const double a2 = rs8;
-    const double r2_rthr = rthr;
-
-    START_CUDA_TIMER();
+    //START_CUDA_TIMER();
 
     int threadsPerBlock = 128;
-    int blocksPerGrid = (linij + threadsPerBlock - 1) / threadsPerBlock;
+    int blocksPerGrid = (maxij + threadsPerBlock - 1) / threadsPerBlock;
     kernel_get_forces_without_dC6_zero_damping<<<blocksPerGrid, threadsPerBlock>>>(
-        linij, maxtau, s6, s8, a1_sqrt3, a1, a2, r2_rthr, alp6, alp8, x, atomtype, dc6i, r2r4, r0ab, tau_idx_vdw, tau_vdw, rep_vdw, c6_ij_tot, dc6_iji_tot, dc6_ijj_tot, dispall, f, sigma
+        maxij, maxtau, rthr, s6, s8, a1, a2, alp6, alp8,
+        r2r4, r0ab, rep_vdw, tau_vdw, tau_idx_vdw, atomtype, x,
+        c6_ij_tot, dc6_iji_tot, dc6_ijj_tot,
+        dc6i, dispall, f, sigma
     );
     cudaDeviceSynchronize();
     disp_total = *dispall;
 
-    STOP_CUDA_TIMER("get_forces_without");
-    CHECK_CUDA_ERROR();
+    //STOP_CUDA_TIMER("get_forces_without");
+    //CHECK_CUDA_ERROR();
 }
 
 /* ----------------------------------------------------------------------
@@ -1553,9 +1577,10 @@ void PairD3::get_forces_without_dC6_zero_damping_modified() {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_forces_without_dC6_bj_damping(
-    int linij, int maxtau, double s6, double s8, double a1_sqrt3, double a2, double r2_rthr,              
-    double **x, int *type, double *dc6i, double *r2r4, int *tau_idx_vdw, double ****tau_vdw, int *rep_vdw, double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot, 
-    double *disp, double **f, double **sigma
+    int maxij, int maxtau, double rthr, double s6, double s8, double a1, double a2,
+    double *r2r4, int *rep_vdw, double ****tau_vdw, int *tau_idx_vdw, int *type, double **x,
+    double *c6_ij_tot, double *dc6_iji_tot, double *dc6_ijj_tot,
+    double *dc6i, double *disp, double **f, double **sigma
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1581,7 +1606,7 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
     double sigma_local_22 = 0.0;
     double disp_local = 0.0;
 
-    if (iter < linij) {
+    if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
@@ -1595,7 +1620,12 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
 
         if (iat == jat) {
             const double unit_r2r4 = r2r4[type[iat]];
-            const double r42 = unit_r2r4 * unit_r2r4;
+            const double r42x3 = unit_r2r4 * unit_r2r4 * 3.0;
+            const double R0 = fma(a1, sqrt(r42x3), a2);
+            const double R0_2 = R0 * R0;
+            const double R0_6 = R0_2 * R0_2 * R0_2;
+            const double R0_8 = R0_6 * R0_2;
+            const double s8r42x3 = s8 * r42x3;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
@@ -1609,23 +1639,17 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
                     tau_vdw[idx1][idx2][idx3][2]
                 };
                 const double r2 = lensq3(rij);
-                if (r2 > r2_rthr || r2 < 0.1) { continue; }
+                if (r2 > rthr) { continue; }
 
                 const double r = sqrt(r2);
                 const double r5 = r2 * r2 * r;
                 const double r7 = r5 * r2;
-                const double R0 = fma(a1_sqrt3, sqrt(r42), a2);
-                const double R0_2 = R0 * R0;
-                const double R0_6 = R0_2 * R0_2 * R0_2;
-                const double R0_8 = R0_6 * R0_2;
-                const double t6 = fma(r5, r, R0_6);
-                const double t8 = fma(r7, r, R0_8);
-                const double t6_rc = 1.0 / t6;
-                const double t8_rc = 1.0 / t8;
+                const double t6_rc = 1.0 / fma(r5, r, R0_6);
+                const double t8_rc = 1.0 / fma(r7, r, R0_8);
                 const double t6_sqrc = t6_rc * t6_rc;
                 const double t8_sqrc = t8_rc * t8_rc;
-                const double x1 = 0.5 * fma(-s8 * c6 * 24.0 * r42, r7 * t8_sqrc, -s6 * c6 * 6.0 * r5 * t6_sqrc);
-                //const double x1 = -s6 * c6 * 6.0 * r5 * t6_sqrc - s8 * c6 * 24.0 * r42 * r7 * t8_sqrc;
+                const double x1 = -c6 * fma(4.0 * s8r42x3 * r7, t8_sqrc, 3.0 * s6 * r5 * t6_sqrc);
+                //const double x1 = 0.5 * -c6 * (6.0 * s6 * r5 * t6_sqrc + 8.0 * s8r42x3 * r7 * t8_sqrc;
 
                 const double r_rc = 1.0 / r; // rsqrt(r2)
                 const double vec[3] = {
@@ -1644,8 +1668,8 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = 0.5 * fma(3.0 * r42, s8 * t8_rc, s6 * t6_rc);
-                //const double dc6_rest = 0.5 * s6 * t6_rc + 3.0 * s8 * r42 * t8_rc;
+                const double dc6_rest = 0.5 * fma(s8r42x3, t8_rc, s6 * t6_rc);
+                //const double dc6_rest = 0.5 * s6 * t6_rc + s8r42x3 * t8_rc;
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1655,7 +1679,12 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
         }
 
         else {
-            const double r42 = r2r4[type[iat]] * r2r4[type[jat]];
+            const double r42x3 = r2r4[type[iat]] * r2r4[type[jat]] * 3.0;
+            const double R0 = fma(a1, sqrt(r42x3), a2);
+            const double R0_2 = R0 * R0;
+            const double R0_6 = R0_2 * R0_2 * R0_2;
+            const double R0_8 = R0_6 * R0_2;
+            const double s8r42x3 = s8 * r42x3;
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
                 const int idx1 = tau_idx_vdw[k-2];
@@ -1667,23 +1696,17 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
                     x[jat][2] - x[iat][2] + tau_vdw[idx1][idx2][idx3][2]
                 };
                 const double r2 = lensq3(rij);
-                if (r2 > r2_rthr) { continue; }
+                if (r2 > rthr) { continue; }
 
                 const double r = sqrt(r2);
                 const double r5 = r2 * r2 * r;
                 const double r7 = r5 * r2;
-                const double R0 = fma(a1_sqrt3, sqrt(r42), a2);
-                const double R0_2 = R0 * R0;
-                const double R0_6 = R0_2 * R0_2 * R0_2;
-                const double R0_8 = R0_6 * R0_2;
-                const double t6 = fma(r5, r, R0_6);
-                const double t8 = fma(r7, r, R0_8);
-                const double t6_rc = 1.0 / t6;
-                const double t8_rc = 1.0 / t8;
+                const double t6_rc = 1.0 / fma(r5, r, R0_6);
+                const double t8_rc = 1.0 / fma(r7, r, R0_8);
                 const double t6_sqrc = t6_rc * t6_rc;
                 const double t8_sqrc = t8_rc * t8_rc;
-                const double x1 = fma(-s8 * c6 * 24.0 * r42, r7 * t8_sqrc, -s6 * c6 * 6.0 * r5 * t6_sqrc);
-                //const double x1 = -s6 * c6 * 6.0 * r5 * t6_sqrc - s8 * c6 * 24.0 * r42 * r7 * t8_sqrc;
+                const double x1 = -c6 * fma(8.0 * s8r42x3 * r7, t8_sqrc, 6.0 * s6 * r5 * t6_sqrc);
+                //const double x1 = -c6 * (6.0 * s6 * r5 * t6_sqrc + 8.0 * s8r42x3 * r7 * t8_sqrc;
 
                 const double r_rc = 1.0 / r; // rsqrt(r2)
                 const double vec[3] = {
@@ -1706,8 +1729,8 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
                 sigma_local_21 += vec[2] * rij[1];
                 sigma_local_22 += vec[2] * rij[2];
 
-                const double dc6_rest = fma(3.0 * r42, s8 * t8_rc, s6 * t6_rc);
-                //const double dc6_rest = s6 * t6_rc + 3.0 * s8 * r42 * t8_rc;
+                const double dc6_rest = fma(s8r42x3, t8_rc, s6 * t6_rc);
+                //const double dc6_rest = s6 * t6_rc + s8r42x3 * t8_rc;
                 disp_local -= dc6_rest * c6;
                 dc6i_local_i += dc6_rest * dc6iji;
                 dc6i_local_j += dc6_rest * dc6ijj;
@@ -1767,7 +1790,7 @@ __global__ void kernel_get_forces_without_dC6_bj_damping(
 
 void PairD3::get_forces_without_dC6_bj_damping() {
     int n = atom->natoms;
-    int linij = n * (n + 1) / 2;
+    int maxij = n * (n + 1) / 2;
     int maxtau = tau_idx_vdw_total_size;
 
     *dispall = 0.0;
@@ -1786,24 +1809,21 @@ void PairD3::get_forces_without_dC6_bj_damping() {
         }
     }
 
-    const double s8 = s18;
-    const double a1 = rs6;
-    const double a1_sqrt3 = a1 * sqrt(3);
-    const double a2 = rs8;
-    const double r2_rthr = rthr;
-
-    START_CUDA_TIMER();
+    //START_CUDA_TIMER();
 
     int threadsPerBlock = 128;
-    int blocksPerGrid = (linij + threadsPerBlock - 1) / threadsPerBlock;
+    int blocksPerGrid = (maxij + threadsPerBlock - 1) / threadsPerBlock;
     kernel_get_forces_without_dC6_bj_damping<<<blocksPerGrid, threadsPerBlock>>>(
-        linij, maxtau, s6, s8, a1_sqrt3, a2, r2_rthr, x, atomtype, dc6i, r2r4, tau_idx_vdw, tau_vdw, rep_vdw, c6_ij_tot, dc6_iji_tot, dc6_ijj_tot, dispall, f, sigma
+        maxij, maxtau, rthr, s6, s8, a1, a2,
+        r2r4, rep_vdw, tau_vdw, tau_idx_vdw, atomtype, x,
+        c6_ij_tot, dc6_iji_tot, dc6_ijj_tot,
+        dc6i, dispall, f, sigma
     );
     cudaDeviceSynchronize();
     disp_total = *dispall;
 
-    STOP_CUDA_TIMER("get_forces_without");
-    CHECK_CUDA_ERROR();
+    //STOP_CUDA_TIMER("get_forces_without");
+    //CHECK_CUDA_ERROR();
 }
 
 /* ----------------------------------------------------------------------
@@ -1811,8 +1831,8 @@ void PairD3::get_forces_without_dC6_bj_damping() {
 ------------------------------------------------------------------------- */
 
 __global__ void kernel_get_forces_with_dC6(
-    int linij, int maxtau, double cn_thr,
-    double *dc6i, double **x, int *type, double *rcov, double ****tau_cn, int *tau_idx_cn, int *rep_cn,
+    int maxij, int maxtau, double cn_thr, double K1,
+    double *dc6i, double *rcov, int *rep_cn, double ****tau_cn, int *tau_idx_cn, int *type, double **x, 
     double **f, double **sigma
 ) {
     int iter = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1839,12 +1859,12 @@ __global__ void kernel_get_forces_with_dC6(
 
     double f_local[3] = { 0.0 };
 
-    if (iter < linij) {
+    if (iter < maxij) {
         int iat, jat;
         ij_at_linij(iter, iat, jat);
 
         if (iat == jat) {
-            const double rocv_sum = rcov[type[iat]] * 2.0;
+            const double rcov_sum = rcov[type[iat]] * 2.0;
             const double dc6i_sum = dc6i[iat];
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
@@ -1862,9 +1882,9 @@ __global__ void kernel_get_forces_with_dC6(
                 if (r2 >= cn_thr) { continue; }
 
                 const double r_rc = rsqrt(r2);
-                const double expterm = exp(-16.0 * (rocv_sum * r_rc - 1.0));
+                const double expterm = exp(-K1 * (rcov_sum * r_rc - 1.0));
                 const double unit_rc = 1.0 / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                const double dcnn = -16.0 * rocv_sum * expterm * unit_rc;
+                const double dcnn = -K1 * rcov_sum * expterm * unit_rc;
                 const double x1 = dcnn * dc6i_sum;
 
                 const double vec[3] = {
@@ -1886,7 +1906,7 @@ __global__ void kernel_get_forces_with_dC6(
         }
             
         else {
-            const double rocv_sum = rcov[type[iat]] + rcov[type[jat]];
+            const double rcov_sum = rcov[type[iat]] + rcov[type[jat]];
             const double dc6i_sum = dc6i[iat] + dc6i[jat];
 
             for (int k = maxtau - 1; k >= 0; k -= 3) {
@@ -1903,9 +1923,9 @@ __global__ void kernel_get_forces_with_dC6(
                 if (r2 >= cn_thr) { continue; }
 
                 const double r_rc = rsqrt(r2);
-                const double expterm = exp(-16.0 * (rocv_sum * r_rc - 1.0));
+                const double expterm = exp(-K1 * (rcov_sum * r_rc - 1.0));
                 const double unit_rc = 1.0 / (r2 * (expterm + 1.0) * (expterm + 1.0));
-                const double dcnn = -16.0 * rocv_sum * expterm * unit_rc;
+                const double dcnn = -K1 * rcov_sum * expterm * unit_rc;
                 const double x1 = dcnn * dc6i_sum;
 
                 const double vec[3] = {
@@ -1978,20 +1998,22 @@ __global__ void kernel_get_forces_with_dC6(
 
 void PairD3::get_forces_with_dC6() {
     int n = atom->natoms;
-    int linij = n * (n + 1) / 2;
+    int maxij = n * (n + 1) / 2;
     int maxtau = tau_idx_cn_total_size;
 
-    START_CUDA_TIMER();
+    //START_CUDA_TIMER();
 
     int threadsPerBlock = 128;
-    int blocksPerGrid = (linij + threadsPerBlock - 1) / threadsPerBlock;
+    int blocksPerGrid = (maxij + threadsPerBlock - 1) / threadsPerBlock;
     kernel_get_forces_with_dC6<<<blocksPerGrid, threadsPerBlock>>>(
-        linij, maxtau, cn_thr, dc6i, x, atomtype, rcov, tau_cn, tau_idx_cn, rep_cn, f, sigma
+        maxij, maxtau, cn_thr, K1,
+        dc6i, rcov, rep_cn, tau_cn, tau_idx_cn, atomtype, x,
+        f, sigma
     );
     cudaDeviceSynchronize();
 
-    STOP_CUDA_TIMER("get_forces_with");
-    CHECK_CUDA_ERROR();
+    //STOP_CUDA_TIMER("get_forces_with");
+    //CHECK_CUDA_ERROR();
 }
 
 
@@ -2001,17 +2023,17 @@ void PairD3::get_forces_with_dC6() {
 
 void PairD3::update(int eflag, int vflag) {
     int n = atom->natoms;
-    // Energy update
-    if (eflag) { eng_vdwl += disp_total * AU_TO_EV; }
+    
+    if (eflag) { eng_vdwl += disp_total * AU_TO_EV; } // Energy update
 
-    double** f_local = atom->f;       // Local force of atoms
+    double** f_local = atom->f; // Local force of atoms
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < 3; j++) {
             f_local[i][j] += f[i][j] * AU_TO_EV / AU_TO_ANG;
         }
     }
 
-    // Stress update
+    
     if (vflag) {
         virial[0] += sigma[0][0] * AU_TO_EV;
         virial[1] += sigma[1][1] * AU_TO_EV;
@@ -2019,7 +2041,7 @@ void PairD3::update(int eflag, int vflag) {
         virial[3] += sigma[0][1] * AU_TO_EV;
         virial[4] += sigma[0][2] * AU_TO_EV;
         virial[5] += sigma[1][2] * AU_TO_EV;
-    }
+    } // Stress update
 }
 
 /* ----------------------------------------------------------------------

@@ -6,6 +6,17 @@ This is for avoiding collision between openACC and pyTorch.
 
 The parallelization used is the same as openACC version.
 
+## Usage
+
+It requires only CUDA, not OpenMP or MPI.
+
+Example LAMMPS input script:
+```
+pair_style d3 9000 1600 d3_damp_bj                     # Available d3_damp_zero d3_damp_bj
+pair_coeff * * ./r0ab.csv ./d3_pars.csv pbe C H O      # Specify used elements
+compute vp_d3 all pressure NULL virial pair/hybrid d3  # Necessary for pressure values
+```
+
 ## Installation
 
 ### Compile CUDA D3 on LAMMPS
@@ -57,7 +68,6 @@ My environment
 -----
 1. Copy `pair_d3.cu` and `pair_d3.h` into the lammps/src directory (not available with CPU version D3 `pair_d3.cpp`)
 
-
 2. Configure `CMakeLists.txt` in the lammps/cmake directory
   - Change: `project(lammps CXX)` -> `project(lammps CXX CUDA)`
   - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
@@ -107,3 +117,4 @@ My environment
 ## Cautions
 - It can be slower than the CPU with a small number of atoms.
 - The CUDA math library differs from C, which can lead to numerical errors.
+- The maximum number of atoms that can be calculated is 46,340. (overflow issue)

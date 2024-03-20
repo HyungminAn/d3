@@ -124,9 +124,9 @@ namespace LAMMPS_NS {
         int* mxc = nullptr;                // How large the grid for c6 interpolation
         double** r0ab = nullptr;           // cut-off radii for all element pairs
         double***** c6ab = nullptr;        // C6 for all element pairs
-        double s6, s18, rs6, rs8, rs18, alp, alp6, alp8;  // parameters for D3
         double rthr;              // R^2 distance to cutoff for C calculation
         double cn_thr;            // R^2 distance to cutoff for CN_calculation
+        double s6, s8, s18, rs6, rs8, rs18, alp, alp6, alp8, a1, a2; // parameters for D3
         /*--------- Parameters to read ---------*/
 
 
