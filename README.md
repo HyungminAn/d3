@@ -1,108 +1,120 @@
-# D3
-LAMMPS implementation of [D3](https://doi.org/10.1063/1.3382344).   
+# D3 dispersion correction on LAMMPS with CUDA
 
-You can find the original FORTRAN code of [dftd3](https://www.chemie.uni-bonn.de/grimme/de/software/dft-d3).
+Only NVIDIA GPU supported.
 
-# How to use
-1. Put `pair_d3.cpp`, `pair_d3.h` into `lammps/src` directory and compile LAMMPS.   
-   To use OpenMP, the `-fopenmp` tag must be set.
+This is for avoiding collision between openACC and pyTorch.
 
-2. Write LAMMPS input scripts like below to use D3.
-```vim
-variable        path_r0ab  string  "r0ab.csv"
-variable        path_c6ab  string  "d3_pars.csv"
-variable        cutoff_d3       equal   9000
-variable        cutoff_d3_CN    equal   1600
-variable        damping_type    string  "d3_damp_bj"
-variable        functional_type   string   "pbe"
-variable        elem_list       string  "O C H"
+The parallelization used is the same as openACC version.
 
-pair_style      d3    ${cutoff_d3}  ${cutoff_d3_CN}  ${damping_type}
-pair_coeff * *  ${path_r0ab} ${path_c6ab} ${functional_type} ${elem_list}
+## Usage
+
+It requires only CUDA, not OpenMP or MPI.
+
+Example LAMMPS input script:
+```
+pair_style d3 9000 1600 d3_damp_bj                     # Available d3_damp_zero d3_damp_bj
+pair_coeff * * ./r0ab.csv ./d3_pars.csv pbe C H O      # Specify used elements
+compute vp_d3 all pressure NULL virial pair/hybrid d3  # Necessary for pressure values
 ```
 
-`r0ab.csv` and `d3_pars.csv` files should exist to calculate d3 interactions (those files are in `lammps_test` folder).
+## Installation
 
-`cutoff_d3` and `cutoff_d3_CN` are *square* of cutoff radii for energy/force and coordination number, respectively.   
-Units are Bohr radius: 1 (Bohr radius) = 0.52917721 (Å)   
-(Default values are 9000 and 1600, respectively)
+### Compile CUDA D3 on LAMMPS
+Requirements
+- Compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- LAMMPS (`23Jun2022` tested)
 
-Available damping types: `d3_damp_zero`, `d3_damp_bj`, `d3_damp_zerom`, `d3_damp_bjm`   
-(Zero damping, Becke-Johnson damping and their modified versions, respectively)
+My environment
+- Module: compiler/2022.1.0 mpi/2021.6.0 mkl/2022.1.0 CUDA/12.1.0 (odin/loki server)
 
-3. Run your LAMMPS code.
+-----
+1. Copy `pair_d3.cu` and `pair_d3.h` into the lammps/src directory (not available with CPU version D3 `pair_d3.cpp`)
 
-To use OpenMP version, you should set `OMP_NUM_THREADS` variable adequately to make full use of your CPU cores.
-```bash
-export OMP_NUM_THREADS=32
-lmp -in lammps.in
-```
-or
-```bash
-env OMP_NUM_THREADS=32 lmp -in lammps.in
-```
+2. Configure `CMakeLists.txt` in the lammps/cmake directory
+  - Change: `project(lammps CXX)` -> `project(lammps CXX CUDA)`
+  - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
+  - Add to the last line:
+    ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+    ```
 
-# To use `pair_d3` with LAMMPS `hybrid`, `hybrid/overlay`
-In case you are doing calculation where pressure also affects simulation   
-(ex. NPT molecular dynamics simulation, geometry optimization with cell relax...):   
-***you must add `compute (name_of_your_compute) all pressure NULL virial pair/hybrid d3` to your lammps input script.***
+3. Enter command in the lammps directory
+  ```
+  mkdir build
+  cd build
 
-In D3, the result of computation (energy, force, stress) will be updated to actual variables in `update` function:
-```cpp
-void PairD3::update(int eflag, int vflag) {
-    int n = atom->natoms;
-    // Energy update
-    if (eflag) { eng_vdwl += disp_total * AU_TO_EV; }
+  cmake ../cmake -C ../cmake/presets/gcc.cmake \
+  -D BUILD_MPI=no -D BUILD_OMP=no \
+  -D CMAKE_CXX_FLAGS="-O3" \
+  -D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
+  -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61"
 
-    double** f_local = atom->f;       // Local force of atoms
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < 3; j++) {
-            f_local[i][j] += f[i][j] * AU_TO_EV / AU_TO_ANG;
-        }
-    }
+  make -j8
+  ```
 
-    // Stress update
-    if (vflag) {
-        virial[0] += sigma[0][0] * AU_TO_EV;
-        virial[1] += sigma[1][1] * AU_TO_EV;
-        virial[2] += sigma[2][2] * AU_TO_EV;
-        virial[3] += sigma[0][1] * AU_TO_EV;
-        virial[4] += sigma[0][2] * AU_TO_EV;
-        virial[5] += sigma[1][2] * AU_TO_EV;
-    }
-}
-```
-In this code, virial stresses are updated only when `vflag` turned on.  
-However, the `pair_hybrid.cpp` in `lammps/src` explains how virial stresses are calculated in hybrid style:  
-```cpp
-/* ----------------------------------------------------------------------
-  call each sub-style's compute() or compute_outer() function
-  accumulate sub-style global/peratom energy/virial in hybrid
-  for global vflag = VIRIAL_PAIR:
-    each sub-style computes own virial[6]
-    sum sub-style virial[6] to hybrid's virial[6]
-  for global vflag = VIRIAL_FDOTR:
-    call sub-style with adjusted vflag to prevent it calling
-      virial_fdotr_compute()
-    hybrid calls virial_fdotr_compute() on final accumulated f
-------------------------------------------------------------------------- */
-```
-Here, `compute pressure` with `pair/hybrid` will switch on the `VIRIAL_PAIR` style, so the virial stress will accumulated to `hybrid/overlay`.   
-Otherwise, `VIRIAL_FDOTR` may be turned on (which may skip the `vflag` part in `update` function; is it default?) and will give some errorneous value (computed from accumulated forces).   
-※ The `pair_style` after `compute pressure` can be any pair_style; only the `VIRIAL_PAIR` matters in this case.
+### Compile CUDA D3 with SevenNet on LAMMPS
+The description below is simply a combination of the above explanation with the compilation of SevenNet.
 
-# Note
-1. In [VASP DFT-D3](https://www.vasp.at/wiki/index.php/DFT-D3) page, `VDW_RADIUS` and `VDW_CNRADIUS` are `50.2` and `20.0`, respectively (units are Å).   
-But you can check the default value of these in OUTCAR: `50.2022` and `21.1671`, which is same to default values of this code.   
-To check this by yourself, run VASP with D3 using zero damping (BJ does not give such log).
+Requirements
+- Libtorch (If you have installed **PyTorch**, then libtorch is already installed)
+- Compiler supporting CUDA nvcc (g++ 12.1.1 tested)
+- LAMMPS (`23Jun2022` tested)
 
-# Features
-- selective/no periodic boundary condition : implemented   
-  (But only PBC/noPBC can be checked through original FORTRAN code; selective PBC cannot)
-- 3-body term, n > 8 term : not implemented   
-  (Same condition to VASP)
+My environment
+- Module: compiler/2022.1.0 mpi/2021.6.0 mkl/2022.1.0 CUDA/12.1.0 (odin/loki server)
+- Conda: pub_sevenn (SevenNet uses libtorch of this env)
 
-# Versions
-1. OpenMP : current state of the art
-2. MPI : in future plan
-3. Using accelerators
+-----
+1. Copy `pair_d3.cu` and `pair_d3.h` into the lammps/src directory (not available with CPU version D3 `pair_d3.cpp`)
+
+2. Configure `CMakeLists.txt` in the lammps/cmake directory
+  - Change: `project(lammps CXX)` -> `project(lammps CXX CUDA)`
+  - Change: `${LAMMPS_SOURCE_DIR}/[^.]*.cpp` -> `${LAMMPS_SOURCE_DIR}/[^.]*.cpp  ${LAMMPS_SOURCE_DIR}/[^.]*.cu`
+  - Change: `set(CMAKE_CXX_STANDARD 11)` -> `set(CMAKE_CXX_STANDARD 14)`
+  - Add to the last line:
+    ```
+    find_package(CUDA)
+    target_link_libraries(lammps PUBLIC ${CUDA_LIBRARIES} cuda)
+  
+    find_package(Torch REQUIRED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+    target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}")
+    ```
+
+3. Enter command in the lammps directory.
+  ```
+  mkdir build
+  cd build
+
+  cmake ../cmake -C ../cmake/presets/gcc.cmake \
+  -D BUILD_MPI=no -D BUILD_OMP=no \
+  -D CMAKE_CXX_FLAGS="-O3" \
+  -D CMAKE_CUDA_FLAGS="-fmad=false -O3" \
+  -D CMAKE_CUDA_ARCHITECTURES="86;80;70;61" \
+  -D CMAKE_PREFIX_PATH=$(python -c "import torch;print(torch.utils.cmake_prefix_path)")
+
+  # CMAKE_PREFIX_PATH=$(python -c "import torch;print(torch.utils.cmake_prefix_path)") uses libtorch in the pytorch in your environment.
+  # If you intend to use a separately installed libtorch, you can simply specify its path directly. (pre-cxx11 and cxx11 tested)
+
+  make -j8
+  ```
+
+### Notes
+- `fmad=false` is essential to obtain precise figures. Be careful to ensure that the result value is correct.
+- CMAKE_CUDA_ARCHITECUTRES lists
+  - 61 -> Titan X, P6000
+  - 70 -> v100
+  - 80 -> a100
+  - 86 -> 3090ti, a5000
+- If there is no GPU on the node you are compling, CMake can cause errors. (maybe)
+
+## To do
+- Implement without Unified Memory.
+- Unfix the threadsPerBlock=128.
+- Unroll the repetition loop k (for small number of atoms)
+
+## Cautions
+- It can be slower than the CPU with a small number of atoms.
+- The CUDA math library differs from C, which can lead to numerical errors.
+- The maximum number of atoms that can be calculated is 46,340. (overflow issue)
