@@ -69,7 +69,7 @@ int *atomtype;
 double *dispall;
 
 inline __host__ __device__ void ij_at_linij(int linij, int &i, int &j) {
-    i = (sqrtf(1 + 8 * linij) - 1) / 2;
+    i = (sqrt(1 + 8 * linij) - 1) / 2;
     j = linij - i * (i + 1) / 2;
 } // unroll the triangular loop
 
@@ -192,7 +192,7 @@ void PairD3::allocate() {
     n_save = n;
 
     cudaMallocManaged(&setflag, np1 * sizeof(int*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&setflag[i], np1 * sizeof(int)); }
-    cudaMallocManaged(&cutsq, np1 * sizeof(float*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&cutsq[i], np1 * sizeof(float)); }
+    cudaMallocManaged(&cutsq, np1 * sizeof(double*)); for (int i = 0; i < np1; i++) { cudaMallocManaged(&cutsq[i], np1 * sizeof(double)); }
     cudaMallocManaged(&r2r4, np1 * sizeof(float));
     cudaMallocManaged(&rcov, np1 * sizeof(float));
     cudaMallocManaged(&mxc, np1 * sizeof(int));
@@ -852,10 +852,10 @@ __global__ void kernel_get_dC6_dCNij(
         const float cnj = cn[jat];
         const int mxcj = mxc[atomtype_j];
 
-        float c6mem = -1e99f;
+        float c6mem = -1e38f;
         float r_save = 9999.0f;
-        float numerator = 0.0f;
-        float denominator = 0.0f;
+        double numerator = 0.0;
+        double denominator = 0.0;
         float d_numerator_i = 0.0f;
         float d_denominator_i = 0.0f;
         float d_numerator_j = 0.0f;
@@ -892,8 +892,8 @@ __global__ void kernel_get_dC6_dCNij(
             }
         }
 
-        if (denominator > 1e-99f) {
-            const float denominator_rc = 1.0f / denominator;
+        if (denominator > 1e-38f) {
+            const double denominator_rc = 1.0 / denominator;
             c6_ij_tot[iter] = numerator * denominator_rc;
             dc6_iji_tot[iter] = ((d_numerator_i * denominator) - (d_denominator_i * numerator)) * (denominator_rc * denominator_rc);
             dc6_ijj_tot[iter] = ((d_numerator_j * denominator) - (d_denominator_j * numerator)) * (denominator_rc * denominator_rc);
@@ -1094,7 +1094,7 @@ __global__ void kernel_get_coordination_number(
                 const float r2 = rx * rx + ry * ry + rz * rz;
                 if (r2 <= cn_thr) {
                     const float r_rc = rsqrtf(r2);
-                    const float damp = fdividef(1.0f, (1.0f + expf(-K1 * ((rcov_sum * r_rc) - 1.0f))));
+                    const float damp = 1.0f / (1.0f + expf(-K1 * ((rcov_sum * r_rc) - 1.0f)));
                     cn_local += damp;
                 }
             }
@@ -1113,7 +1113,7 @@ __global__ void kernel_get_coordination_number(
                 const float r2 = rx * rx + ry * ry + rz * rz;
                 if (r2 <= cn_thr) {
                     const float r_rc = rsqrtf(r2);
-                    const float damp = fdividef(1.0f, (1.0f + expf(-K1 * ((rcov_sum * r_rc) - 1.0f))));
+                    const float damp = 1.0f / (1.0f + expf(-K1 * ((rcov_sum * r_rc) - 1.0f)));
                     cn_local += damp;
                 }
             }
