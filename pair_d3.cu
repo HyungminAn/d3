@@ -918,7 +918,7 @@ void PairD3::get_dC6_dCNij() {
     int n = atom->natoms;
     int maxij = n * (n + 1) / 2;
 
-    START_CUDA_TIMER();
+    //START_CUDA_TIMER();
 
     int threadsPerBlock = 128;
     int blocksPerGrid = (maxij + threadsPerBlock - 1) / threadsPerBlock;
@@ -929,7 +929,7 @@ void PairD3::get_dC6_dCNij() {
     );
     cudaDeviceSynchronize();
 
-    STOP_CUDA_TIMER("get_dC6dCNij");
+    //STOP_CUDA_TIMER("get_dC6dCNij");
     //CHECK_CUDA_ERROR();
 }
 
