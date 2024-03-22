@@ -69,7 +69,7 @@ int *atomtype;
 double *dispall;
 
 inline __host__ __device__ void ij_at_linij(int linij, int &i, int &j) {
-    i = (sqrt(1 + 8 * linij) - 1) / 2;
+    i = static_cast<int>((sqrt(1 + 8 * linij) - 1) / 2);
     j = linij - i * (i + 1) / 2;
 } // unroll the triangular loop
 
@@ -852,36 +852,36 @@ __global__ void kernel_get_dC6_dCNij(
         const float cnj = cn[jat];
         const int mxcj = mxc[atomtype_j];
 
-        float c6mem = -1e38f;
+        float c6mem = -1e99f;
         float r_save = 9999.0f;
         double numerator = 0.0;
         double denominator = 0.0;
-        float d_numerator_i = 0.0f;
-        float d_denominator_i = 0.0f;
-        float d_numerator_j = 0.0f;
-        float d_denominator_j = 0.0f;
+        double d_numerator_i = 0.0;
+        double d_denominator_i = 0.0;
+        double d_numerator_j = 0.0;
+        double d_denominator_j = 0.0;
 
         for (int a = 0; a < mxci; a++) {
             for (int b = 0; b < mxcj; b++) {
-                const float c6ref = c6ab[atomtype_i][atomtype_j][a][b][0];
+                float c6ref = c6ab[atomtype_i][atomtype_j][a][b][0];
 
                 if (c6ref > 0.0f) {
-                    const float cn_refi = c6ab[atomtype_i][atomtype_j][a][b][1];
-                    const float cn_refj = c6ab[atomtype_i][atomtype_j][a][b][2];
+                    float cn_refi = c6ab[atomtype_i][atomtype_j][a][b][1];
+                    float cn_refj = c6ab[atomtype_i][atomtype_j][a][b][2];
 
-                    const float r = (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
+                    float r = (cn_refi - cni) * (cn_refi - cni) + (cn_refj - cnj) * (cn_refj - cnj);
                     if (r < r_save) {
                         r_save = r;
                         c6mem = c6ref;
                     }
 
-                    float expterm = expf(K3* r);
+                    double expterm = exp(static_cast<double>(K3) * static_cast<double>(r)); // must be double
                     numerator += c6ref * expterm;
                     denominator += expterm;
 
                     expterm *= 2.0f * K3;
 
-                    float term = expterm * (cni - cn_refi);
+                    double term = expterm * (cni - cn_refi);
                     d_numerator_i += c6ref * term;
                     d_denominator_i += term;
 
@@ -892,11 +892,19 @@ __global__ void kernel_get_dC6_dCNij(
             }
         }
 
-        if (denominator > 1e-38f) {
-            const double denominator_rc = 1.0 / denominator;
-            c6_ij_tot[iter] = numerator * denominator_rc;
-            dc6_iji_tot[iter] = ((d_numerator_i * denominator) - (d_denominator_i * numerator)) * (denominator_rc * denominator_rc);
-            dc6_ijj_tot[iter] = ((d_numerator_j * denominator) - (d_denominator_j * numerator)) * (denominator_rc * denominator_rc);
+        if (denominator > 1e-99) {
+            const double denominator_rc = 1.0 / denominator; // must be double
+            const double unit_frac = numerator * denominator_rc;
+            c6_ij_tot[iter] = unit_frac;
+            dc6_iji_tot[iter] = denominator_rc * fma(unit_frac, -d_denominator_i, d_numerator_i); // must be double
+            dc6_ijj_tot[iter] = denominator_rc * fma(unit_frac, -d_denominator_j, d_numerator_j); // must be double
+            //const double denominator_rc = 1.0 / denominator;
+            //const float unit_frac = numerator * denominator_rc;
+            //c6_ij_tot[iter] = unit_frac;
+            //dc6_iji_tot[iter] = \
+            static_cast<float>(d_numerator_i * denominator_rc) - static_cast<float>(d_denominator_i * denominator_rc) * unit_frac;            
+            //dc6_ijj_tot[iter] = \
+            static_cast<float>(d_numerator_j * denominator_rc) - static_cast<float>(d_denominator_j * denominator_rc) * unit_frac;
         }
         else {
             c6_ij_tot[iter] = c6mem;
@@ -910,7 +918,7 @@ void PairD3::get_dC6_dCNij() {
     int n = atom->natoms;
     int maxij = n * (n + 1) / 2;
 
-    //START_CUDA_TIMER();
+    START_CUDA_TIMER();
 
     int threadsPerBlock = 128;
     int blocksPerGrid = (maxij + threadsPerBlock - 1) / threadsPerBlock;
@@ -921,7 +929,7 @@ void PairD3::get_dC6_dCNij() {
     );
     cudaDeviceSynchronize();
 
-    //STOP_CUDA_TIMER("get_dC6dCNij");
+    STOP_CUDA_TIMER("get_dC6dCNij");
     //CHECK_CUDA_ERROR();
 }
 
